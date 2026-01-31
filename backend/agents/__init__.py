@@ -1,3 +1,19 @@
-from backend.agents.base_agent import BaseAgent
+"""
+Agents package for AdaptiveCare.
+"""
 
-__all__ = ["BaseAgent"]
+from .base_agent import BaseAgent
+from .escalation_decision import (
+    EscalationDecisionAgent,
+    AgentInput,
+    AgentOutput,
+    DecisionExplainer
+)
+
+__all__ = [
+    "BaseAgent",
+    "EscalationDecisionAgent",
+    "AgentInput",
+    "AgentOutput",
+    "DecisionExplainer"
+]

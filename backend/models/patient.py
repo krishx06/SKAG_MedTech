@@ -1,85 +1,138 @@
-from pydantic import BaseModel, Field
+"""
+Patient models for AdaptiveCare hospital patient flow system.
+"""
+
 from datetime import datetime
-from typing import List, Optional
 from enum import Enum
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field
 
 
-class Gender(str, Enum):
-    MALE = "male"
-    FEMALE = "female"
-    OTHER = "other"
+class PatientStatus(str, Enum):
+    """Current status of a patient in the hospital."""
+    WAITING = "waiting"
+    IN_TREATMENT = "in_treatment"
+    ADMITTED = "admitted"
+    DISCHARGED = "discharged"
+    TRANSFERRED = "transferred"
+    CRITICAL = "critical"
 
 
-class Location(str, Enum):
-    ED = "ED"
-    ICU = "ICU"
-    WARD = "Ward"
-    ED_OBS = "ED_Obs"
-    OR = "OR"
-    DISCHARGE = "Discharge"
+class AcuityLevel(int, Enum):
+    """Emergency Severity Index (ESI) scale 1-5."""
+    RESUSCITATION = 1  # Immediate life-saving intervention required
+    EMERGENT = 2       # High risk situation
+    URGENT = 3         # Stable but needs multiple resources
+    LESS_URGENT = 4    # Stable, needs one resource
+    NON_URGENT = 5     # Stable, no resources needed
 
 
 class VitalSigns(BaseModel):
-    heart_rate: int = Field(..., ge=0, le=300)
-    blood_pressure_systolic: int = Field(..., ge=0, le=300)
-    blood_pressure_diastolic: int = Field(..., ge=0, le=200)
-    oxygen_saturation: float = Field(..., ge=0, le=100)
-    respiratory_rate: int = Field(..., ge=0, le=60)
-    temperature: float = Field(..., ge=30.0, le=45.0)
-    glasgow_coma_scale: int = Field(..., ge=3, le=15)
-    timestamp: datetime
-
-
-class LabResult(BaseModel):
-    test_name: str
-    value: float
-    unit: str
-    timestamp: datetime
-    normal_range_low: float
-    normal_range_high: float
+    """Patient vital signs measurement."""
+    heart_rate: float = Field(..., ge=0, le=300, description="BPM")
+    systolic_bp: float = Field(..., ge=0, le=300, description="mmHg")
+    diastolic_bp: float = Field(..., ge=0, le=200, description="mmHg")
+    spo2: float = Field(..., ge=0, le=100, description="Oxygen saturation %")
+    temperature: float = Field(..., ge=30, le=45, description="Celsius")
+    respiratory_rate: Optional[float] = Field(None, ge=0, le=60, description="Breaths/min")
+    measured_at: datetime = Field(default_factory=datetime.now)
 
     @property
-    def is_abnormal(self) -> bool:
-        return self.value < self.normal_range_low or self.value > self.normal_range_high
+    def blood_pressure(self) -> str:
+        """Return formatted blood pressure string."""
+        return f"{self.systolic_bp:.0f}/{self.diastolic_bp:.0f}"
+
+    def is_critical(self) -> bool:
+        """Check if vitals indicate critical condition."""
+        return (
+            self.heart_rate < 40 or self.heart_rate > 150 or
+            self.systolic_bp < 80 or self.systolic_bp > 200 or
+            self.spo2 < 90 or
+            self.temperature < 35 or self.temperature > 40
+        )
+
+
+class RiskFactors(BaseModel):
+    """Risk factors contributing to patient risk score."""
+    sepsis_probability: float = Field(0.0, ge=0, le=1)
+    cardiac_risk: float = Field(0.0, ge=0, le=1)
+    respiratory_risk: float = Field(0.0, ge=0, le=1)
+    deterioration_trend: float = Field(0.0, ge=-1, le=1, description="Negative = improving, Positive = worsening")
+    comorbidity_score: float = Field(0.0, ge=0, le=1)
+    custom_factors: Dict[str, float] = Field(default_factory=dict)
 
 
 class Patient(BaseModel):
-    patient_id: str
-    name: str
+    """Core patient model representing a patient in the hospital system."""
+    id: str = Field(..., description="Unique patient identifier")
+    name: str = Field(..., description="Patient full name")
     age: int = Field(..., ge=0, le=150)
-    gender: Gender
-    chief_complaint: str
-    arrival_time: datetime
-    current_location: Location
-    vitals: List[VitalSigns] = Field(default_factory=list)
-    labs: List[LabResult] = Field(default_factory=list)
-    medical_history: List[str] = Field(default_factory=list)
-    current_medications: List[str] = Field(default_factory=list)
-    allergies: List[str] = Field(default_factory=list)
+    gender: str = Field(..., pattern="^(M|F|O)$", description="M/F/O")
+    
+    # Location and timing
+    admission_time: datetime = Field(default_factory=datetime.now)
+    current_location: str = Field(..., description="Current unit/bed")
+    target_location: Optional[str] = Field(None, description="Recommended destination")
+    
+    # Medical information
+    chief_complaint: str = Field(..., description="Primary reason for visit")
+    diagnosis: Optional[str] = Field(None, description="Working diagnosis")
+    comorbidities: List[str] = Field(default_factory=list)
+    
+    # Current state
+    vitals: VitalSigns
+    status: PatientStatus = PatientStatus.WAITING
+    acuity_level: AcuityLevel = AcuityLevel.URGENT
+    
+    # Risk assessment (populated by Risk Monitor Agent)
+    risk_score: float = Field(0.0, ge=0, le=100, description="Overall risk score 0-100")
+    risk_factors: RiskFactors = Field(default_factory=RiskFactors)
+    
+    # Metadata
+    last_updated: datetime = Field(default_factory=datetime.now)
     notes: List[str] = Field(default_factory=list)
 
-    @property
-    def latest_vitals(self) -> Optional[VitalSigns]:
-        if not self.vitals:
-            return None
-        return max(self.vitals, key=lambda v: v.timestamp)
+    class Config:
+        use_enum_values = True
 
     @property
-    def latest_labs(self) -> dict[str, LabResult]:
-        if not self.labs:
-            return {}
-        latest = {}
-        for lab in sorted(self.labs, key=lambda l: l.timestamp):
-            latest[lab.test_name] = lab
-        return latest
+    def wait_time_minutes(self) -> int:
+        """Calculate current wait time in minutes."""
+        return int((datetime.now() - self.admission_time).total_seconds() / 60)
+
+    @property
+    def is_high_risk(self) -> bool:
+        """Check if patient is considered high risk."""
+        return self.risk_score >= 70 or self.acuity_level <= AcuityLevel.EMERGENT
+
+    def to_summary(self) -> Dict[str, Any]:
+        """Return a summary dict for frontend display."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "age": self.age,
+            "status": self.status,
+            "acuity_level": self.acuity_level,
+            "risk_score": self.risk_score,
+            "wait_time_minutes": self.wait_time_minutes,
+            "current_location": self.current_location,
+            "chief_complaint": self.chief_complaint,
+            "is_critical": self.vitals.is_critical()
+        }
 
 
-class PatientSummary(BaseModel):
-    patient_id: str
-    name: str
-    age: int
-    current_location: Location
-    chief_complaint: str
-    arrival_time: datetime
-    risk_score: Optional[float] = None
-    risk_trajectory: Optional[str] = None
+class PatientQueue(BaseModel):
+    """A queue of patients sorted by priority."""
+    patients: List[Patient] = Field(default_factory=list)
+    
+    def get_sorted_by_risk(self) -> List[Patient]:
+        """Return patients sorted by risk score (highest first)."""
+        return sorted(self.patients, key=lambda p: p.risk_score, reverse=True)
+    
+    def get_sorted_by_acuity(self) -> List[Patient]:
+        """Return patients sorted by acuity level (most urgent first)."""
+        return sorted(self.patients, key=lambda p: p.acuity_level.value)
+    
+    def get_critical_patients(self) -> List[Patient]:
+        """Return only critical/high-risk patients."""
+        return [p for p in self.patients if p.is_high_risk or p.vitals.is_critical()]

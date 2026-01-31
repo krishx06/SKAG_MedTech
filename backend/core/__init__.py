@@ -1,14 +1,19 @@
-from backend.core.event_bus import EventBus, event_bus
-from backend.core.state_manager import StateManager, state_manager
-from backend.core.orchestrator import Orchestrator
-from backend.core.config import Settings, settings
+"""
+Core package for AdaptiveCare backend.
+"""
+
+from .config import Config, MCDAConfig, DecisionThresholds, LLMConfig
+from .event_bus import EventBus, get_event_bus, create_event_id
+from .state_manager import StateManager, get_state_manager
 
 __all__ = [
+    "Config",
+    "MCDAConfig",
+    "DecisionThresholds",
+    "LLMConfig",
     "EventBus",
-    "event_bus",
+    "get_event_bus",
+    "create_event_id",
     "StateManager",
-    "state_manager",
-    "Orchestrator",
-    "Settings",
-    "settings",
+    "get_state_manager"
 ]
