@@ -1,12 +1,23 @@
+"""
+Simulation routes for AdaptiveCare API
+
+Provides endpoints for controlling hospital simulation with
+integrated Risk Monitor Agent.
+"""
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
-from backend.core import state_manager, event_bus
-from backend.models import EventType
-
+from backend.simulation.simulation_orchestrator import get_orchestrator
 
 router = APIRouter()
+
+
+class SimulationStartRequest(BaseModel):
+    """Request to start simulation."""
+    scenario: str = Field(default="busy_thursday", description="Scenario name")
+    duration: int = Field(default=120, ge=1, le=1440, description="Duration in minutes")
+    arrival_rate: float = Field(default=12.5, gt=0, le=100, description="Arrival rate (patients/hour)")
 
 
 class SimulationControl(BaseModel):
@@ -15,51 +26,63 @@ class SimulationControl(BaseModel):
 
 @router.get("/status")
 async def get_simulation_status():
-    return {
-        "running": state_manager.is_simulation_running(),
-        "current_time": state_manager.get_simulation_time().isoformat(),
-    }
+    """Get current simulation status and statistics."""
+    orchestrator = get_orchestrator()
+    return orchestrator.get_status()
 
 
 @router.post("/start")
-async def start_simulation(control: SimulationControl = SimulationControl()):
-    if state_manager.is_simulation_running():
-        raise HTTPException(status_code=400, detail="Simulation already running")
+async def start_simulation(request: SimulationStartRequest = SimulationStartRequest()):
+    """
+    Start hospital simulation with Risk Monitor integration.
     
-    state_manager.set_simulation_running(True)
-    await event_bus.publish(EventType.SIMULATION_START.value, {"speed": control.speed})
-    return {"status": "started", "speed": control.speed}
+    The simulation runs in the background and continuously feeds
+    patient events to the Risk Monitor Agent.
+    """
+    orchestrator = get_orchestrator()
+    
+    result = orchestrator.start_simulation(
+        scenario=request.scenario,
+        duration=request.duration,
+        arrival_rate=request.arrival_rate
+    )
+    
+    if result["status"] == "error":
+        raise HTTPException(status_code=400, detail=result.get("message", "Failed to start"))
+    
+    return result
 
 
 @router.post("/stop")
 async def stop_simulation():
-    if not state_manager.is_simulation_running():
-        raise HTTPException(status_code=400, detail="Simulation not running")
+    """Stop the running simulation gracefully."""
+    orchestrator = get_orchestrator()
     
-    state_manager.set_simulation_running(False)
-    await event_bus.publish(EventType.SIMULATION_STOP.value, {})
-    return {"status": "stopped"}
-
-
-@router.post("/reset")
-async def reset_simulation():
-    state_manager.set_simulation_running(False)
-    await state_manager.clear()
-    await event_bus.publish(EventType.SIMULATION_RESET.value, {})
-    return {"status": "reset"}
+    result = orchestrator.stop_simulation()
+    
+    if result["status"] == "error":
+        raise HTTPException(status_code=400, detail=result.get("message", "No simulation running"))
+    
+    return result
 
 
 @router.get("/hospital")
 async def get_hospital_state():
-    state = await state_manager.get_hospital_state()
-    if not state:
-        return {"message": "No hospital state available"}
-    return state
+    """Get current hospital state with all patients."""
+    orchestrator = get_orchestrator()
+    patients = orchestrator.get_patients()
+    status = orchestrator.get_status()
+    
+    return {
+        "status": status,
+        "patients": patients,
+        "patient_count": len(patients)
+    }
 
 
 @router.get("/capacity/{unit}")
 async def get_unit_capacity(unit: str):
-    capacity = await state_manager.get_capacity_assessment(unit)
-    if not capacity:
-        raise HTTPException(status_code=404, detail=f"Capacity for {unit} not found")
-    return capacity
+    """Get capacity for a specific unit."""
+    # This will be enhanced when Capacity Intelligence integration is complete
+    raise HTTPException(status_code=501, detail="Capacity endpoint not yet integrated")
+
