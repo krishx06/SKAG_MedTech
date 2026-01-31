@@ -1,3 +1,8 @@
-from backend.api.main import app
+"""
+API package for AdaptiveCare backend.
+"""
 
-__all__ = ["app"]
+from .main import app
+from .websocket import manager, router as ws_router
+
+__all__ = ["app", "manager", "ws_router"]
