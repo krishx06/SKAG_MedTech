@@ -1,15 +1,16 @@
 """
 LLM Reasoning module for AdaptiveCare.
-Uses Claude API to generate human-readable explanations for decisions.
+Uses Google Gemini API to generate human-readable explanations for decisions.
 """
 
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+import os
 
 from backend.models.patient import Patient
-from backend.models.decision import DecisionType, MCDAScore, UrgencyLevel
-from backend.core.config import Config
+from backend.models.decision import ActionType, MCDAScores, RiskAssessment
+from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class LLMReasoning:
     """
     LLM-powered reasoning for generating human-readable decision explanations.
     
-    Uses Claude API to transform MCDA scores and patient context into
+    Uses Google Gemini API to transform MCDA scores and patient context into
     clear, actionable explanations that clinical staff can understand.
     """
     
@@ -31,30 +32,32 @@ class LLMReasoning:
         Initialize LLM reasoning module.
         
         Args:
-            api_key: Anthropic API key (defaults to config)
-            model: Model name (defaults to config)
+            api_key: Google API key (defaults to env variable)
+            model: Model name (defaults to gemini-2.0-flash-exp)
         """
-        self.api_key = api_key or Config.ANTHROPIC_API_KEY
-        self.model = model or Config.LLM_MODEL
-        self.max_tokens = Config.LLM_MAX_TOKENS
-        self.temperature = Config.LLM_TEMPERATURE
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
+        self.model = model or os.getenv("LLM_MODEL", "gemini-1.5-flash")
+        self.max_tokens = int(os.getenv("LLM_MAX_TOKENS", "500"))
+        self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.3"))
         self._client = None
         
         if self.api_key:
             try:
-                import anthropic
-                self._client = anthropic.Anthropic(api_key=self.api_key)
-                logger.info(f"LLM Reasoning initialized with model: {self.model}")
+                import google.generativeai as genai
+                genai.configure(api_key=self.api_key)
+                self._client = genai.GenerativeModel(self.model)
+                logger.info(f"LLM Reasoning initialized with Gemini model: {self.model}")
             except ImportError:
-                logger.warning("anthropic package not installed, using fallback explanations")
+                logger.warning("google-generativeai package not installed, using fallback explanations")
         else:
-            logger.warning("No API key provided, using fallback explanations")
+            logger.warning("No Google API key provided, using fallback explanations")
 
     async def generate_explanation(
         self,
         patient: Patient,
-        decision_type: DecisionType,
-        mcda_score: MCDAScore,
+        action_type: ActionType,
+        mcda_scores: Optional[MCDAScores],
+        risk_assessment: Optional[RiskAssessment],
         context: Dict[str, Any]
     ) -> str:
         """
@@ -62,8 +65,9 @@ class LLMReasoning:
         
         Args:
             patient: The patient the decision is for
-            decision_type: Type of decision made
-            mcda_score: MCDA scoring breakdown
+            action_type: Type of action recommended
+            mcda_scores: MCDA scoring breakdown (optional)
+            risk_assessment: Risk assessment data (optional)
             context: Additional context (capacity, recommendations, etc.)
             
         Returns:
@@ -71,170 +75,195 @@ class LLMReasoning:
         """
         if not self._client:
             return self._generate_fallback_explanation(
-                patient, decision_type, mcda_score, context
+                patient, action_type, mcda_scores, risk_assessment, context
             )
         
         try:
-            prompt = self._build_prompt(patient, decision_type, mcda_score, context)
+            prompt = self._build_prompt(patient, action_type, mcda_scores, risk_assessment, context)
             
-            message = self._client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+            # Generate with Gemini
+            generation_config = {
+                "temperature": self.temperature,
+                "max_output_tokens": self.max_tokens,
+            }
+            
+            response = self._client.generate_content(
+                prompt,
+                generation_config=generation_config
             )
             
-            explanation = message.content[0].text.strip()
-            logger.debug(f"Generated LLM explanation for patient {patient.id}")
+            explanation = response.text.strip()
+            logger.debug(f"Generated LLM explanation for patient {patient.patient_id}")
             return explanation
             
         except Exception as e:
-            logger.error(f"LLM API error: {e}, using fallback")
+            logger.error(f"Gemini API error: {e}, using fallback")
             return self._generate_fallback_explanation(
-                patient, decision_type, mcda_score, context
+                patient, action_type, mcda_scores, risk_assessment, context
             )
 
     def _build_prompt(
         self,
         patient: Patient,
-        decision_type: DecisionType,
-        mcda_score: MCDAScore,
+        action_type: ActionType,
+        mcda_scores: Optional[MCDAScores],
+        risk_assessment: Optional[RiskAssessment],
         context: Dict[str, Any]
     ) -> str:
-        """Build the prompt for Claude API."""
+        """Build the prompt for Gemini API."""
         
-        # Get dominant factor
-        dominant = mcda_score.get_dominant_factor()
-        breakdown = mcda_score.get_breakdown()
+        # Extract latest vitals
+        vitals = patient.latest_vitals
+        vitals_text = "No vitals available"
+        if vitals:
+            vitals_text = f"""- Heart Rate: {vitals.heart_rate} bpm
+- Blood Pressure: {vitals.blood_pressure_systolic}/{vitals.blood_pressure_diastolic} mmHg
+- SpO2: {vitals.oxygen_saturation}%
+- Respiratory Rate: {vitals.respiratory_rate} breaths/min
+- Temperature: {vitals.temperature}°C
+- GCS: {vitals.glasgow_coma_scale}/15"""
+
+        # Risk assessment info
+        risk_text = "No risk assessment available"
+        if risk_assessment:
+            risk_text = f"""- Risk Score: {risk_assessment.risk_score:.1f}/100
+- Trajectory: {risk_assessment.trajectory.value}
+- Contributing Factors: {', '.join(risk_assessment.contributing_factors[:3])}"""
+
+        # MCDA scores info
+        mcda_text = "No MCDA scores available"
+        if mcda_scores:
+            mcda_text = f"""- Overall Score: {mcda_scores.weighted_total:.2f}/100
+- Safety: {mcda_scores.safety_score:.1f}
+- Urgency: {mcda_scores.urgency_score:.1f}
+- Capacity: {mcda_scores.capacity_score:.1f}
+- Impact: {mcda_scores.impact_score:.1f}"""
         
-        prompt = f"""You are a clinical decision support system explaining patient care decisions to hospital staff.
+        prompt = f"""You are a clinical decision support AI assistant. Generate a clear, professional explanation (2-3 sentences) for this patient care decision.
 
-Generate a clear, concise explanation (2-3 sentences) for the following decision:
-
-PATIENT:
-- ID: {patient.id}
-- Age: {patient.age}, Chief Complaint: {patient.chief_complaint}
-- Acuity Level: ESI {patient.acuity_level} 
-- Current Location: {patient.current_location}
-- Wait Time: {patient.wait_time_minutes} minutes
-- Risk Score: {patient.risk_score:.1f}/100
+PATIENT INFORMATION:
+- ID: {patient.patient_id}
+- Name: {patient.name}
+- Age: {patient.age}, Gender: {patient.gender.value if hasattr(patient.gender, 'value') else patient.gender}
+- Chief Complaint: {patient.chief_complaint}
+- Current Location: {patient.current_location.value if hasattr(patient.current_location, 'value') else patient.current_location}
+- Medical History: {', '.join(patient.medical_history[:3]) if patient.medical_history else 'None noted'}
 
 VITALS:
-- Heart Rate: {patient.vitals.heart_rate} bpm
-- Blood Pressure: {patient.vitals.blood_pressure}
-- SpO2: {patient.vitals.spo2}%
-- Temperature: {patient.vitals.temperature}°C
+{vitals_text}
 
-DECISION: {decision_type.upper()}
+RISK ASSESSMENT:
+{risk_text}
 
-MCDA SCORE BREAKDOWN:
-- Overall Score: {mcda_score.weighted_total:.2f}
-- Risk Factor: {breakdown['risk']['raw']:.2f} (weighted: {breakdown['risk']['weighted']:.2f}, {breakdown['risk']['contribution']:.1f}% contribution)
-- Capacity Factor: {breakdown['capacity']['raw']:.2f} (weighted: {breakdown['capacity']['weighted']:.2f}, {breakdown['capacity']['contribution']:.1f}% contribution)
-- Wait Time Factor: {breakdown['wait_time']['raw']:.2f} (weighted: {breakdown['wait_time']['weighted']:.2f}, {breakdown['wait_time']['contribution']:.1f}% contribution)
-- Resource Match: {breakdown['resource']['raw']:.2f} (weighted: {breakdown['resource']['weighted']:.2f}, {breakdown['resource']['contribution']:.1f}% contribution)
-- Dominant Factor: {dominant}
+DECISION SCORES:
+{mcda_text}
 
-CONTEXT:
-- Available ICU beds: {context.get('icu_beds_available', 'N/A')}
-- Available ER beds: {context.get('er_beds_available', 'N/A')}
-- Flow recommendations: {context.get('flow_recommendations', [])}
+RECOMMENDED ACTION: {action_type.value.upper()}
 
-Write a natural, clinical explanation that:
-1. States the decision clearly
-2. Explains the PRIMARY reason (focus on the dominant factor)
-3. Mentions any critical secondary factors
-4. Uses clinical terminology appropriately
-5. Is actionable for staff
+CAPACITY CONTEXT:
+- ICU beds available: {context.get('icu_beds_available', 'Unknown')}
+- ED beds available: {context.get('ed_beds_available', 'Unknown')}
+- Staff availability: {context.get('staff_availability', 'Normal')}
 
-Example format: "Patient [ACTION] because [PRIMARY REASON]. [SECONDARY FACTORS if relevant]. Recommend [SPECIFIC ACTION]."
-"""
+Generate a concise clinical explanation that:
+1. States the recommended action clearly
+2. Explains the PRIMARY clinical reason (focus on most critical factor)
+3. Mentions any secondary concerns if critical
+4. Uses appropriate medical terminology
+5. Is actionable for clinical staff
+
+Format: "Recommendation: [ACTION]. Rationale: [PRIMARY REASON]. [SECONDARY FACTOR if critical]. Next steps: [SPECIFIC ACTION]."
+
+Keep it professional, clear, and under 100 words."""
+        
         return prompt
 
     def _generate_fallback_explanation(
         self,
         patient: Patient,
-        decision_type: DecisionType,
-        mcda_score: MCDAScore,
+        action_type: ActionType,
+        mcda_scores: Optional[MCDAScores],
+        risk_assessment: Optional[RiskAssessment],
         context: Dict[str, Any]
     ) -> str:
         """
         Generate explanation without LLM (rule-based fallback).
         Used when API is unavailable.
         """
-        dominant = mcda_score.get_dominant_factor()
-        breakdown = mcda_score.get_breakdown()
-        
-        # Build explanation based on decision type and dominant factor
         reasons = []
         
         # Risk-based reasons
-        if mcda_score.risk_score >= 0.7:
-            reasons.append(f"risk score elevated to {patient.risk_score:.0f}%")
-        if patient.vitals.is_critical():
-            reasons.append("critical vital signs detected")
-        if patient.risk_factors.sepsis_probability > 0.5:
-            reasons.append(f"sepsis probability at {patient.risk_factors.sepsis_probability*100:.0f}%")
+        if risk_assessment:
+            if risk_assessment.risk_score >= 70:
+                reasons.append(f"high risk score ({risk_assessment.risk_score:.0f}/100)")
+            if risk_assessment.trajectory.value == "deteriorating":
+                reasons.append("patient condition deteriorating")
+            if risk_assessment.trajectory.value == "critical":
+                reasons.append("CRITICAL patient status")
+        
+        # Vital signs
+        vitals = patient.latest_vitals
+        if vitals:
+            if vitals.oxygen_saturation < 90:
+                reasons.append(f"low oxygen saturation ({vitals.oxygen_saturation}%)")
+            if vitals.heart_rate > 120:
+                reasons.append(f"tachycardia ({vitals.heart_rate} bpm)")
+            if vitals.blood_pressure_systolic < 90:
+                reasons.append(f"hypotension ({vitals.blood_pressure_systolic} mmHg)")
+            if vitals.glasgow_coma_scale < 13:
+                reasons.append(f"altered mental status (GCS {vitals.glasgow_coma_scale})")
         
         # Capacity-based reasons
-        if mcda_score.capacity_score >= 0.7:
-            icu_beds = context.get('icu_beds_available', 0)
-            if icu_beds > 0:
-                reasons.append(f"ICU bed available ({icu_beds} open)")
-        elif mcda_score.capacity_score < 0.3:
-            reasons.append("limited bed availability")
-        
-        # Wait time reasons
-        if mcda_score.wait_time_score >= 0.7:
-            reasons.append(f"wait time ({patient.wait_time_minutes} min) exceeds threshold")
-        
-        # Resource reasons
-        if mcda_score.resource_score < 0.5:
-            reasons.append("resource constraints noted")
+        if mcda_scores:
+            if mcda_scores.capacity_score >= 70:
+                icu_beds = context.get('icu_beds_available', 0)
+                if icu_beds > 0:
+                    reasons.append(f"bed available in target unit")
+            elif mcda_scores.capacity_score < 30:
+                reasons.append("limited bed availability")
         
         # Build decision-specific explanation
-        if decision_type == DecisionType.ESCALATE:
-            action = "escalated to higher care level"
+        if action_type == ActionType.ESCALATE:
+            action = "escalate to higher level of care"
             if not reasons:
-                reasons.append(f"MCDA score {mcda_score.weighted_total:.2f} exceeds escalation threshold")
-        elif decision_type == DecisionType.OBSERVE:
-            action = "recommended for continued monitoring"
+                reasons.append("clinical indicators warrant escalation")
+            target = context.get('target_unit', 'ICU')
+            next_step = f"Immediate transfer to {target} recommended."
+            
+        elif action_type == ActionType.OBSERVE:
+            action = "continue monitoring"
             if not reasons:
-                reasons.append("condition stable but requires ongoing observation")
-        elif decision_type == DecisionType.DELAY:
-            action = "placement delayed"
+                reasons.append("condition requires ongoing observation")
+            next_step = "Reassess in 15-30 minutes."
+            
+        elif action_type == ActionType.DELAY:
+            action = "delay placement"
             if not reasons:
                 reasons.append("awaiting resource availability")
-        elif decision_type == DecisionType.REPRIORITIZE:
-            action = "queue position adjusted"
+            next_step = "Reassess when resources become available."
+            
+        elif action_type == ActionType.REPRIORITIZE:
+            action = "adjust priority level"
             if not reasons:
-                reasons.append("priority recalculated based on current factors")
+                reasons.append("clinical status changed")
+            next_step = "Continue monitoring with updated priority."
+            
         else:
-            action = "decision pending"
-            reasons.append("evaluation in progress")
+            action = "pending evaluation"
+            reasons.append("assessment in progress")
+            next_step = "Complete evaluation."
         
         # Format the explanation
-        reason_text = " AND ".join(reasons[:2]) if reasons else "multiple factors"
+        reason_text = " AND ".join(reasons[:2]) if reasons else "clinical assessment"
         
-        explanation = f"Patient {action} because {reason_text}."
-        
-        # Add recommendation
-        if decision_type == DecisionType.ESCALATE:
-            target = context.get('target_unit', 'ICU')
-            explanation += f" Recommend immediate transfer to {target}."
-        elif decision_type == DecisionType.OBSERVE:
-            explanation += " Continue monitoring with reassessment in 15 minutes."
-        elif decision_type == DecisionType.DELAY:
-            explanation += " Will reassess when resources become available."
+        explanation = f"Recommendation: {action.capitalize()}. Rationale: {reason_text}. {next_step}"
         
         return explanation
 
     def extract_contributing_factors(
         self,
         patient: Patient,
-        mcda_score: MCDAScore,
+        risk_assessment: Optional[RiskAssessment],
         context: Dict[str, Any]
     ) -> List[str]:
         """
@@ -242,38 +271,40 @@ Example format: "Patient [ACTION] because [PRIMARY REASON]. [SECONDARY FACTORS i
         
         Args:
             patient: Patient being evaluated
-            mcda_score: MCDA score breakdown
+            risk_assessment: Risk assessment data
             context: Additional context
             
         Returns:
             List of human-readable factor strings
         """
         factors = []
-        breakdown = mcda_score.get_breakdown()
         
         # Risk factors
-        if mcda_score.risk_score >= 0.5:
-            factors.append(f"Risk score: {patient.risk_score:.0f}/100")
-        if patient.vitals.is_critical():
-            factors.append("Critical vitals detected")
-        if patient.risk_factors.sepsis_probability > 0.3:
-            factors.append(f"Sepsis risk: {patient.risk_factors.sepsis_probability*100:.0f}%")
-        if patient.risk_factors.deterioration_trend > 0.2:
-            factors.append("Worsening trend detected")
+        if risk_assessment:
+            if risk_assessment.risk_score >= 50:
+                factors.append(f"Risk score: {risk_assessment.risk_score:.0f}/100")
+            factors.append(f"Trajectory: {risk_assessment.trajectory.value}")
+            factors.extend(risk_assessment.contributing_factors[:2])
         
-        # Capacity factors
+        # Vital signs
+        vitals = patient.latest_vitals
+        if vitals:
+            if vitals.oxygen_saturation < 92:
+                factors.append(f"Low SpO2: {vitals.oxygen_saturation}%")
+            if vitals.heart_rate > 110 or vitals.heart_rate < 50:
+                factors.append(f"Abnormal HR: {vitals.heart_rate} bpm")
+            if vitals.glasgow_coma_scale < 15:
+                factors.append(f"GCS: {vitals.glasgow_coma_scale}")
+        
+        # Capacity
         icu_beds = context.get('icu_beds_available', 0)
         if icu_beds > 0:
             factors.append(f"ICU beds available: {icu_beds}")
-        elif icu_beds == 0 and mcda_score.capacity_score < 0.3:
+        elif icu_beds == 0:
             factors.append("No ICU beds available")
         
-        # Wait time
-        if patient.wait_time_minutes > 30:
-            factors.append(f"Wait time: {patient.wait_time_minutes} minutes")
-        
-        # Acuity
-        factors.append(f"Acuity level: ESI {patient.acuity_level}")
+        # Location and acuity
+        factors.append(f"Location: {patient.current_location.value if hasattr(patient.current_location, 'value') else patient.current_location}")
         
         return factors[:5]  # Limit to top 5 factors
 
@@ -285,7 +316,7 @@ Example format: "Patient [ACTION] because [PRIMARY REASON]. [SECONDARY FACTORS i
         Generate explanations for multiple decisions efficiently.
         
         Args:
-            decisions: List of decision dicts with patient, type, score, context
+            decisions: List of decision dicts with patient, action, scores, context
             
         Returns:
             Dict mapping patient_id to explanation
@@ -293,11 +324,12 @@ Example format: "Patient [ACTION] because [PRIMARY REASON]. [SECONDARY FACTORS i
         explanations = {}
         
         for decision in decisions:
-            patient_id = decision['patient'].id
+            patient_id = decision['patient'].patient_id
             explanation = await self.generate_explanation(
                 patient=decision['patient'],
-                decision_type=decision['decision_type'],
-                mcda_score=decision['mcda_score'],
+                action_type=decision['action_type'],
+                mcda_scores=decision.get('mcda_scores'),
+                risk_assessment=decision.get('risk_assessment'),
                 context=decision.get('context', {})
             )
             explanations[patient_id] = explanation
