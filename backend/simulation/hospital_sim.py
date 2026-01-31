@@ -133,10 +133,11 @@ class HospitalSimulator:
         for reading_num in range(1, 9):  # 8 readings over 2 hours
             yield self.env.timeout(15)
             
-            # Generate new vitals based on deterioration
+            # Generate new vitals based on deterioration and patient age
             new_vitals = DataGenerator.generate_vitals(
-                severity,
-                deterioration,
+                age=patient.age,
+                severity=severity,
+                deterioration=deterioration,
                 time_offset=reading_num * 15
             )
             
