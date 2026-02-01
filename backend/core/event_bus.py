@@ -60,10 +60,6 @@ class EventBus:
         logger.debug(f"Publishing event: {event.event_type} from {event.source_agent}")
         
         # Get subscribers for this event type
-        type_subscribers = self._subscribers.get(event.event_type, [])
-        all_subscribers = type_subscribers + self._global_subscribers
-        
-        # Sort by priority if available
         all_subscribers_sorted = sorted(
             all_subscribers,
             key=lambda s: getattr(s, '_priority', 5),
@@ -113,11 +109,17 @@ class EventBus:
         if event_type not in self._subscribers:
             self._subscribers[event_type] = []
         
-        # Attach priority to callback for sorting
-        callback._priority = priority  # type: ignore
+        # Store callback with priority in a wrapper
+        callback_wrapper = {
+            'callback': callback,
+            'priority': priority
+        }
         
-        if callback not in self._subscribers[event_type]:
-            self._subscribers[event_type].append(callback)
+        # Check if this specific callback (not wrapper) is already subscribed
+        if not any(cw['callback'] == callback for cw in self._subscribers[event_type]):
+            self._subscribers[event_type].append(callback_wrapper)
+            # Sort by priority (descending)
+            self._subscribers[event_type].sort(key=lambda x: x['priority'], reverse=True)
             logger.debug(f"Subscribed to {event_type} with priority {priority}")
 
     def subscribe_all(

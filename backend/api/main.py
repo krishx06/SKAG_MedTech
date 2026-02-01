@@ -46,10 +46,9 @@ async def lifespan(app: FastAPI):
     event_bus = get_event_bus()
     state_manager = get_state_manager()
     
-    # Initialize decision engine
-    mcda = MCDACalculator()
-    llm = LLMReasoning()
-    decision_engine = DecisionEngine(mcda, llm)
+    # Initialize decision engine with MCDA weights from config
+    weights = Config.get_mcda_weights()
+    decision_engine = DecisionEngine(weights)
     
     # Initialize escalation agent
     escalation_agent = EscalationDecisionAgent(
@@ -89,6 +88,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register route modules
+from backend.api.routes import patients, simulation, agents
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
+
+app.include_router(patients.router, prefix="/api/patients", tags=["patients"])
+app.include_router(simulation.router, prefix="/api/simulation", tags=["simulation"])
+app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
+
+# Mount static files
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# Root route - serve dashboard
+@app.get("/")
+async def root():
+    """Serve the backend dashboard."""
+    dashboard_path = os.path.join(static_dir, "dashboard.html")
+    if os.path.exists(dashboard_path):
+        return FileResponse(dashboard_path)
+    return {"message": "AdaptiveCare API", "docs": "/docs", "dashboard": "/static/dashboard.html"}
 
 
 # ========================
