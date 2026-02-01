@@ -27,16 +27,22 @@ export interface LabResult {
 }
 
 export interface Patient {
-  patient_id: string;
+  id: string;
+  patient_id?: string;
   name: string;
   age: number;
-  gender: Gender;
+  gender?: Gender;
+  status: string;
+  acuity_level: number;
+  risk_score: number;
+  wait_time_minutes: number;
   chief_complaint: string;
-  arrival_time: string;
-  current_location: LocationType;
-  vitals: VitalSigns[];
-  labs: LabResult[];
-  medical_history: string[];
+  arrival_time?: string;
+  current_location: string;
+  vitals?: VitalSigns[];
+  labs?: LabResult[];
+  medical_history?: string[];
+  is_critical: boolean;
 }
 
 export interface RiskAssessment {
@@ -49,14 +55,26 @@ export interface RiskAssessment {
 }
 
 export interface UnitCapacity {
-  unit: LocationType;
+  id: string;
+  name: string;
+  unit_type: string;
   total_beds: number;
-  occupied_beds: number;
   available_beds: number;
-  occupancy_rate: number; // 0-1
-  staff_on_duty: number;
-  patients_per_nurse: number;
-  capacity_score: number; // 0-100
+  occupancy_rate: number; // 0-100 percentage
+  pending_discharges: number;
+  available_staff: number;
+  average_staff_load: number;
+}
+
+export interface CapacityResponse {
+  timestamp: string;
+  total_beds: number;
+  total_available: number;
+  overall_occupancy_rate: number;
+  predicted_discharges_1h: number;
+  predicted_admissions_1h: number;
+  units: UnitCapacity[];
+  by_type: Record<string, number>;
 }
 
 export interface Decision {

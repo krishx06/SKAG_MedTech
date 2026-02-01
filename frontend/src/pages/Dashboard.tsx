@@ -8,13 +8,24 @@ import { Activity, Users, Zap } from 'lucide-react';
 import { usePatients } from '@/hooks/usePatients';
 import { useCapacity } from '@/hooks/useCapacity';
 import { useDecisions } from '@/hooks/useDecisions';
-import type { Patient } from '@/types/hospital';
+import type { Patient, CapacityResponse, Decision } from '@/types/hospital';
+
+// Type for decisions API response
+interface DecisionsResponse {
+  decisions: Decision[];
+  total: number;
+}
 
 export default function Dashboard() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const { data: patients, isLoading: patientsLoading } = usePatients();
-  const { data: capacities, isLoading: capacityLoading } = useCapacity();
-  const { data: decisions, isLoading: decisionsLoading } = useDecisions();
+  const { data: capacityData, isLoading: capacityLoading } = useCapacity();
+  const { data: decisionsData, isLoading: decisionsLoading } = useDecisions();
+
+  // Extract units from capacity response 
+  const capacities = (capacityData as CapacityResponse)?.units ?? [];
+  // Extract decisions array from response (backend returns {decisions: [], total: 0})
+  const decisions = Array.isArray(decisionsData) ? decisionsData : ((decisionsData as DecisionsResponse)?.decisions ?? []);
 
   const handlePatientClick = (patient: Patient) => {
     setSelectedPatient(patient);
@@ -51,7 +62,7 @@ export default function Dashboard() {
             <CardContent className="h-[calc(100%-5rem)] p-4">
               <PatientQueue
                 patients={patients ?? []}
-                selectedPatientId={selectedPatient?.patient_id}
+                selectedPatientId={selectedPatient?.id}
                 onPatientClick={handlePatientClick}
                 isLoading={patientsLoading}
               />

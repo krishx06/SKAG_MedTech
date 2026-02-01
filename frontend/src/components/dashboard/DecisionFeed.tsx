@@ -48,15 +48,16 @@ interface DecisionFeedProps {
 
 export function DecisionFeed({ decisions, isLoading, autoScroll = true }: DecisionFeedProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const prevLengthRef = useRef(decisions.length);
+  const safeDecisions = decisions ?? [];
+  const prevLengthRef = useRef(safeDecisions.length);
 
   // Auto-scroll to top when new decisions arrive
   useEffect(() => {
-    if (autoScroll && decisions.length > prevLengthRef.current && scrollRef.current) {
+    if (autoScroll && safeDecisions.length > prevLengthRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
-    prevLengthRef.current = decisions.length;
-  }, [decisions.length, autoScroll]);
+    prevLengthRef.current = safeDecisions.length;
+  }, [safeDecisions.length, autoScroll]);
 
   if (isLoading) {
     return (
@@ -79,10 +80,10 @@ export function DecisionFeed({ decisions, isLoading, autoScroll = true }: Decisi
   return (
     <ScrollArea className="h-full" ref={scrollRef}>
       <div className="space-y-3 pr-4">
-        {decisions.map((decision) => (
+        {safeDecisions.map((decision) => (
           <DecisionItem key={decision.decision_id} decision={decision} />
         ))}
-        {decisions.length === 0 && (
+        {safeDecisions.length === 0 && (
           <div className="py-8 text-center text-muted-foreground">
             No decisions yet. Start the simulation to see AI decisions.
           </div>
