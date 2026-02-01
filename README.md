@@ -1,8 +1,8 @@
-# 🏥 AdaptiveCare
+# AdaptiveCare
 
 A **Multi-Agent Hospital Patient Flow Intelligence System** - featuring AI-powered patient prioritization, real-time capacity management, and explainable decision-making with LLM reasoning.
 
-## 🎯 Overview
+## Overview
 
 AdaptiveCare is an intelligent hospital management system that uses a multi-agent architecture to optimize patient flow, predict resource needs, and provide explainable escalation decisions. The system continuously monitors patient risk, hospital capacity, and makes data-driven recommendations with full transparency.
 
@@ -31,14 +31,14 @@ AdaptiveCare is an intelligent hospital management system that uses a multi-agen
 
 ### Key Features
 
-- **🔍 Risk Monitoring**: Continuous patient vital sign analysis with deterioration prediction
-- **📊 Capacity Intelligence**: Real-time bed/staff tracking with availability forecasting
-- **🔄 Flow Orchestration**: Optimal patient placement using MCDA (Multi-Criteria Decision Analysis)
-- **⚡ Escalation Decisions**: AI-powered prioritization with LLM-generated explanations
-- **📈 Real-time Dashboard**: Live visualization of hospital state and decisions
-- **🎮 Hospital Simulation**: Realistic scenarios for testing and demonstration
+- **Risk Monitoring**: Continuous patient vital sign analysis with deterioration prediction
+- **Capacity Intelligence**: Real-time bed/staff tracking with availability forecasting
+- **Flow Orchestration**: Optimal patient placement using MCDA (Multi-Criteria Decision Analysis)
+- **Escalation Decisions**: AI-powered prioritization with LLM-generated explanations
+- **Real-time Dashboard**: Live visualization of hospital state and decisions
+- **Hospital Simulation**: Realistic scenarios for testing and demonstration
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Prerequisites
 
@@ -89,7 +89,7 @@ npm run dev
 ```
 Frontend runs at: `http://localhost:5173`
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 SKAG_MedTech/
@@ -151,7 +151,7 @@ SKAG_MedTech/
 └── requirements.txt
 ```
 
-## 🤖 Agent Architecture
+## Agent Architecture
 
 ### Base Agent Interface
 
@@ -210,7 +210,7 @@ Patient Vitals Update
 └───────────────────┘    deterioration requiring ICU-level care..."
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -254,7 +254,7 @@ WAIT_TIME_WEIGHT=0.2  # Queue waiting time importance
 RESOURCE_WEIGHT=0.1   # Staff/equipment importance
 ```
 
-## 🧪 Testing
+## Testing
 
 ```bash
 # Run all tests
@@ -267,7 +267,7 @@ python test_phase3.py   # Full pipeline integration
 python demo_krish_agents.py
 ```
 
-## 🐳 Docker Deployment
+## Docker Deployment
 
 ```bash
 # Build and run with Docker Compose
@@ -277,7 +277,7 @@ docker-compose up --build
 # Frontend: http://localhost:5173
 ```
 
-## 📡 API Endpoints
+## API Endpoints
 
 ### Patients
 - `GET /api/patients` - List all patients
@@ -300,7 +300,7 @@ docker-compose up --build
 ### WebSocket
 - `ws://localhost:8000/ws` - Real-time decision stream
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Backend
 - **FastAPI** - High-performance async API framework
@@ -317,7 +317,7 @@ docker-compose up --build
 - **Recharts** - Data visualization
 - **React Query** - Server state management
 
-## 👥 Team
+## Team
 
 | Member | Role |
 |--------|------|
@@ -325,6 +325,7 @@ docker-compose up --build
 | **Gayatri** | Risk Monitor Agent, Simulation System |
 | **Krish** | Capacity Intelligence, Flow Orchestrator, MCDA , Frontend Dashboard|
 | **Sneha** | Escalation Decision Agent |
+
 
 
 
