@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AdaptiveCare Backend Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .card h2 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #f5f5f5;
+        }
+        
+        .stat:last-child {
+            border-bottom: none;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .stat-value {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .status.running {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.stopped {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status.healthy {
+            background: #cce5ff;
+            color: #004085;
+        }
+        
+        .patient-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .patient-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+        }
+        
+        .patient-item.high-risk {
+            border-left-color: #dc3545;
+            background: #fff5f5;
+        }
+        
+        .patient-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+        
+        .patient-details {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .risk-score {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .risk-high {
+            background: #ff4444;
+            color: white;
+        }
+        
+        .risk-medium {
+            background: #ffa500;
+            color: white;
+        }
+        
+        .risk-low {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .loading {
+            color: #666;
+            font-style: italic;
+        }
+        
+        .error {
+            color: #dc3545;
+            padding: 10px;
+            background: #fff5f5;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        
+        .api-docs {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .api-docs a {
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            display: inline-block;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .api-docs a:hover {
+            background: rgba(255,255,255,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏥 AdaptiveCare Backend Dashboard</h1>
+            <p>Real-time hospital patient flow intelligence system</p>
+        </div>
+        
+        <div class="grid">
+            <!-- System Status -->
+            <div class="card">
+                <h2>📊 System Status</h2>
+                <div id="system-status">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+            
+            <!-- Simulation Control -->
+            <div class="card">
+                <h2>🎮 Simulation Control</h2>
+                <div id="simulation-status">
+                    <div class="loading">Loading...</div>
+                </div>
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="startSimulation()">Start Simulation</button>
+                    <button class="btn btn-danger" onclick="stopSimulation()">Stop</button>
+                </div>
+            </div>
+            
+            <!-- Capacity Overview -->
+            <div class="card">
+                <h2>🏨 Capacity</h2>
+                <div id="capacity-status">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Active Patients -->
+        <div class="card">
+            <h2>👥 Active Patients</h2>
+            <div id="patients-list" class="patient-list">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+        
+        <div class="api-docs">
+            <a href="/docs" target="_blank">📚 View API Documentation</a>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = window.location.origin;
+        
+        // Fetch system status
+        async function fetchSystemStatus() {
+            try {
+                const health = await fetch(`${API_BASE}/api/health`).then(r => r.json());
+                const stats = await fetch(`${API_BASE}/api/stats`).then(r => r.json());
+                
+                document.getElementById('system-status').innerHTML = `
+                    <div class="stat">
+                        <span class="stat-label">API Status</span>
+                        <span class="status healthy">${health.status}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Total Patients</span>
+                        <span class="stat-value">${stats.total_patients || 0}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Active Decisions</span>
+                        <span class="stat-value">${stats.total_decisions || 0}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Uptime</span>
+                        <span class="stat-value">${health.uptime || 'N/A'}</span>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('system-status').innerHTML = '<div class="error">Failed to load status</div>';
+            }
+        }
+        
+        // Fetch simulation status
+        async function fetchSimulationStatus() {
+            try {
+                const status = await fetch(`${API_BASE}/api/simulation/status`).then(r => r.json());
+                
+                document.getElementById('simulation-status').innerHTML = `
+                    <div class="stat">
+                        <span class="stat-label">Status</span>
+                        <span class="status ${status.is_running ? 'running' : 'stopped'}">${status.is_running ? 'Running' : 'Stopped'}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Scenario</span>
+                        <span class="stat-value">${status.scenario || 'N/A'}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Total Arrivals</span>
+                        <span class="stat-value">${status.total_arrivals || 0}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Assessments</span>
+                        <span class="stat-value">${status.total_assessments || 0}</span>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('simulation-status').innerHTML = '<div class="error">Not available</div>';
+            }
+        }
+        
+        // Fetch capacity
+        async function fetchCapacity() {
+            try {
+                const capacity = await fetch(`${API_BASE}/api/capacity`).then(r => r.json());
+                
+                document.getElementById('capacity-status').innerHTML = `
+                    <div class="stat">
+                        <span class="stat-label">Total Beds</span>
+                        <span class="stat-value">${capacity.total_beds || 0}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Available</span>
+                        <span class="stat-value">${capacity.total_available || 0}</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Occupancy</span>
+                        <span class="stat-value">${capacity.overall_occupancy_rate?.toFixed(1) || 0}%</span>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('capacity-status').innerHTML = '<div class="error">Not available</div>';
+            }
+        }
+        
+        // Fetch patients
+        async function fetchPatients() {
+            try {
+                const patients = await fetch(`${API_BASE}/api/patients`).then(r => r.json());
+                
+                if (patients.length === 0) {
+                    document.getElementById('patients-list').innerHTML = '<div class="loading">No active patients</div>';
+                    return;
+                }
+                
+                const html = patients.map(p => {
+                    const riskClass = p.risk_score >= 70 ? 'risk-high' : p.risk_score >= 40 ? 'risk-medium' : 'risk-low';
+                    const patientClass = p.risk_score >= 70 ? 'high-risk' : '';
+                    
+                    return `
+                        <div class="patient-item ${patientClass}">
+                            <div class="patient-name">
+                                ${p.name || p.id}
+                                <span class="risk-score ${riskClass}">${p.risk_score?.toFixed(0) || 0}</span>
+                            </div>
+                            <div class="patient-details">
+                                Age: ${p.age} | Acuity: ${p.acuity_level} | ${p.chief_complaint || 'N/A'}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                document.getElementById('patients-list').innerHTML = html;
+            } catch (error) {
+                document.getElementById('patients-list').innerHTML = '<div class="error">Failed to load patients</div>';
+            }
+        }
+        
+        // Start simulation
+        async function startSimulation() {
+            try {
+                await fetch(`${API_BASE}/api/simulation/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                await fetchSimulationStatus();
+                alert('Simulation started!');
+            } catch (error) {
+                alert('Failed to start simulation: ' + error.message);
+            }
+        }
+        
+        // Stop simulation
+        async function stopSimulation() {
+            try {
+                await fetch(`${API_BASE}/api/simulation/stop`, { method: 'POST' });
+                await fetchSimulationStatus();
+                alert('Simulation stopped!');
+            } catch (error) {
+                alert('Failed to stop simulation: ' + error.message);
+            }
+        }
+        
+        // Initial load
+        fetchSystemStatus();
+        fetchSimulationStatus();
+        fetchCapacity();
+        fetchPatients();
+        
+        // Auto-refresh every 5 seconds
+        setInterval(() => {
+            fetchSystemStatus();
+            fetchSimulationStatus();
+            fetchCapacity();
+            fetchPatients();
+        }, 5000);
+    </script>
+</body>
+</html>

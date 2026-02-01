@@ -9,8 +9,10 @@ from datetime import datetime
 import os
 
 from backend.models.patient import Patient
-from backend.models.decision import DecisionType, MCDAScores, RiskAssessment
-from backend.core.config import settings
+from backend.models.decision import DecisionType, EscalationDecision
+from backend.reasoning.mcda import MCDAScores
+from backend.agents.risk_monitor.models import RiskAssessment
+from backend.core.config import Config
 
 logger = logging.getLogger(__name__)
 
