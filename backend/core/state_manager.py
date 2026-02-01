@@ -128,11 +128,17 @@ class StateManager:
     # ========================
     
     async def add_decision(self, decision: EscalationDecision) -> None:
-        """Add a decision to history."""
+        """Add a decision to history (async)."""
         async with self._lock:
             self._decisions.add_decision(decision)
             self._last_updated[f"decision_{decision.id}"] = datetime.now()
             logger.info(f"Added decision: {decision.id} for patient {decision.patient_id}")
+    
+    def add_decision_sync(self, decision: EscalationDecision) -> None:
+        """Add a decision to history (sync, for use from background threads)."""
+        self._decisions.add_decision(decision)
+        self._last_updated[f"decision_{decision.id}"] = datetime.now()
+        logger.info(f"Added decision (sync): {decision.id} for patient {decision.patient_id}")
 
     def get_decisions(self, patient_id: Optional[str] = None) -> List[EscalationDecision]:
         """Get decisions, optionally filtered by patient."""

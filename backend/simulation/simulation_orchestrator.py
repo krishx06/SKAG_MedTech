@@ -11,6 +11,8 @@ from datetime import datetime
 import threading
 from queue import Queue
 import logging
+import random
+import uuid
 
 from backend.simulation.hospital_sim import HospitalSimulator
 from backend.simulation.scenarios.busy_thursday import BusyThursdayScenario
@@ -20,6 +22,8 @@ from backend.simulation.event_types import (
     DeteriorationSimEvent
 )
 from backend.models.patient import Patient
+from backend.models.decision import EscalationDecision, DecisionType, UrgencyLevel, MCDAScore, MCDAWeights
+from backend.core.state_manager import get_state_manager
 
 # Import Risk Monitor directly to avoid dependency conflicts
 import sys
@@ -97,11 +101,14 @@ class SimulationOrchestrator:
                 time_scale=1.0
             )
             
-            # Setup scenario
-            if scenario == "busy_thursday":
-                BusyThursdayScenario.setup(self.simulation)
-            else:
-                raise ValueError(f"Unknown scenario: {scenario}")
+            # Setup scenario - all use BusyThursdayScenario but with different config
+            # Supported scenarios: busy_thursday, normal, high_ed, staff_shortage
+            supported_scenarios = ["busy_thursday", "normal", "high_ed", "staff_shortage"]
+            if scenario not in supported_scenarios:
+                raise ValueError(f"Unknown scenario: {scenario}. Supported: {supported_scenarios}")
+            
+            # All scenarios use the same base setup
+            BusyThursdayScenario.setup(self.simulation)
             
             # Start simulation in background thread
             self.is_running = True
@@ -297,6 +304,10 @@ class SimulationOrchestrator:
         assessment = self.risk_monitor.assess_patient(patient)
         self.total_assessments += 1
         
+        # Generate decision for high-risk patients
+        if assessment.risk_score >= 50:
+            self._generate_decision_for_patient(patient, assessment)
+        
         # Broadcast event
         event_data = {
             "type": "patient_arrival",
@@ -313,6 +324,77 @@ class SimulationOrchestrator:
         self._broadcast_event(event_data)
         
         logger.debug(f"Patient arrival: {patient.id}, risk={assessment.risk_score:.1f}")
+    
+    def _generate_decision_for_patient(self, patient, assessment):
+        """Generate an AI decision for a patient and store in state_manager."""
+        try:
+            # Determine decision type based on risk level
+            risk_score = assessment.risk_score
+            
+            if risk_score >= 80:
+                decision_type = DecisionType.ESCALATE
+                urgency = UrgencyLevel.IMMEDIATE
+                action = "Transfer to ICU immediately"
+                target_unit = "ICU"
+                reasoning = f"Critical risk score of {risk_score:.0f}. Patient requires immediate escalation to higher care level due to deteriorating condition."
+            elif risk_score >= 65:
+                decision_type = DecisionType.ESCALATE
+                urgency = UrgencyLevel.URGENT
+                action = "Prepare for ICU transfer within 15 minutes"
+                target_unit = "ICU"
+                reasoning = f"High risk score of {risk_score:.0f}. Patient should be escalated to ICU to prevent further deterioration."
+            elif risk_score >= 50:
+                decision_type = DecisionType.OBSERVE
+                urgency = UrgencyLevel.SOON
+                action = "Increase monitoring frequency to every 15 minutes"
+                target_unit = None
+                reasoning = f"Moderate risk score of {risk_score:.0f}. Patient requires enhanced monitoring but immediate escalation not indicated."
+            else:
+                return  # No decision needed for low-risk patients
+            
+            # Create MCDA score
+            mcda = MCDAScore(
+                risk_score=min(risk_score / 100, 1.0),
+                capacity_score=random.uniform(0.4, 0.8),
+                wait_time_score=random.uniform(0.3, 0.7),
+                resource_score=random.uniform(0.5, 0.9),
+                weighted_risk=min(risk_score / 100 * 0.4, 0.4),
+                weighted_capacity=random.uniform(0.1, 0.24),
+                weighted_wait_time=random.uniform(0.06, 0.14),
+                weighted_resource=random.uniform(0.05, 0.09),
+                weighted_total=min(risk_score / 100 * 0.4, 0.4) + 0.25,
+                weights_used=MCDAWeights()
+            )
+            
+            # Create decision
+            decision = EscalationDecision(
+                id=f"DEC-{uuid.uuid4().hex[:8].upper()}",
+                patient_id=patient.id,
+                timestamp=datetime.now(),
+                decision_type=decision_type,
+                urgency=urgency,
+                priority_score=risk_score,
+                mcda_breakdown=mcda,
+                reasoning=reasoning,
+                contributing_factors=["Risk Assessment", "Vital Signs", "Acuity Level"],
+                confidence=min(0.92, 0.75 + (risk_score / 400)),
+                requires_human_review=risk_score >= 80,
+                recommended_action=action,
+                target_unit=target_unit,
+                context={"patient_name": getattr(patient, 'name', f"Patient {patient.id}")}
+            )
+            
+            # Store in state manager (async wrapper)
+            state_manager = get_state_manager()
+            asyncio.run_coroutine_threadsafe(
+                state_manager.add_decision(decision),
+                asyncio.get_event_loop()
+            )
+            
+            logger.info(f"Generated {decision_type.value} decision for patient {patient.id}")
+            
+        except Exception as e:
+            logger.error(f"Error generating decision: {e}")
     
     def _handle_vitals_update(self, event: VitalsUpdateSimEvent):
         """Handle vitals update event."""
