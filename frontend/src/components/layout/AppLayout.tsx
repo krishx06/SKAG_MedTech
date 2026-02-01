@@ -9,8 +9,6 @@ import {
   Bot,
   ChevronLeft,
   ChevronRight,
-  Wifi,
-  WifiOff,
 } from 'lucide-react';
 import { useWebSocket, type ConnectionStatus } from '@/hooks/useWebSocket';
 import { usePatientUpdates } from '@/hooks/usePatients';
@@ -30,44 +28,7 @@ const navItems = [
   { path: '/agents', label: 'Agent Status', icon: Bot },
 ];
 
-function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
-  const statusConfig = {
-    connected: {
-      icon: Wifi,
-      color: 'text-status-online',
-      label: 'Connected',
-      pulse: true,
-    },
-    connecting: {
-      icon: Wifi,
-      color: 'text-status-warning',
-      label: 'Connecting...',
-      pulse: true,
-    },
-    disconnected: {
-      icon: WifiOff,
-      color: 'text-status-offline',
-      label: 'Disconnected',
-      pulse: false,
-    },
-    error: {
-      icon: WifiOff,
-      color: 'text-destructive',
-      label: 'Error',
-      pulse: false,
-    },
-  };
 
-  const config = statusConfig[status];
-  const Icon = config.icon;
-
-  return (
-    <div className="flex items-center gap-2 text-sm">
-      <Icon className={cn('h-4 w-4', config.color, config.pulse && 'animate-pulse-live')} />
-      <span className={cn('hidden sm:inline', config.color)}>{config.label}</span>
-    </div>
-  );
-}
 
 export function AppLayout({ children }: AppLayoutProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -162,12 +123,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           })}
         </nav>
 
-        {/* Connection Status */}
-        <div className="border-t border-sidebar-border p-4">
-          <div className={cn('flex items-center', isCollapsed ? 'justify-center' : 'gap-2')}>
-            <ConnectionIndicator status={status} />
-          </div>
-        </div>
+
       </aside>
 
       {/* Main Content */}
