@@ -384,17 +384,32 @@ class SimulationOrchestrator:
                 context={"patient_name": getattr(patient, 'name', f"Patient {patient.id}")}
             )
             
-            # Store in state manager (async wrapper)
+            # Store decision synchronously (background thread can't use asyncio)
             state_manager = get_state_manager()
-            asyncio.run_coroutine_threadsafe(
-                state_manager.add_decision(decision),
-                asyncio.get_event_loop()
-            )
+            state_manager.add_decision_sync(decision)
             
-            logger.info(f"Generated {decision_type.value} decision for patient {patient.id}")
+            # Broadcast via event bus for WebSocket real-time updates
+            from backend.core.event_bus import get_event_bus
+            from backend.models.events import EventType, DecisionEvent
+            
+            event_bus = get_event_bus()
+            decision_event = DecisionEvent(
+                event_type=EventType.DECISION_MADE,
+                decision_id=decision.id,
+                patient_id=decision.patient_id,
+                decision_type=decision.decision_type.value,
+                priority_score=decision.priority_score,
+                reasoning_summary=decision.reasoning[:200] if len(decision.reasoning) > 200 else decision.reasoning,
+                requires_acknowledgment=decision.requires_human_review,
+                payload=decision.dict()
+            )
+            event_bus.publish(EventType.DECISION_MADE, decision_event)
+            
+            logger.info(f"Generated {decision_type.value} decision for patient {patient.id} (ID: {decision.id})")
             
         except Exception as e:
-            logger.error(f"Error generating decision: {e}")
+            logger.error(f"Error generating decision: {e}", exc_info=True)
+
     
     def _handle_vitals_update(self, event: VitalsUpdateSimEvent):
         """Handle vitals update event."""
@@ -489,6 +504,61 @@ class SimulationOrchestrator:
                 self.event_callback(event_data)
             except Exception as e:
                 logger.error(f"Event callback error: {e}")
+    
+    def _inject_ambulance_patient(self, patient_data: Dict[str, Any]):
+        """
+        Inject a new ambulance patient into running simulation.
+        
+        Args:
+            patient_data: Dict with patient attributes (acuity_level, chief_complaint, age, vitals)
+        """
+        from backend.models.patient import Patient, VitalSigns, AcuityLevel
+        import uuid
+        
+        # Create patient
+        patient = Patient(
+            id=f"AMB-{uuid.uuid4().hex[:8].upper()}",
+            name=f"Ambulance Patient {self.total_arrivals +  1}",
+            age=patient_data.get("age", 65),
+            gender="M",
+            chief_complaint=patient_data.get("chief_complaint", "Emergency arrival"),
+            acuity_level=AcuityLevel(patient_data.get("acuity_level", 1)),
+            vitals=VitalSigns(**patient_data.get("vitals", {})),
+            current_location="ER-Ambulance",
+            status="active",
+            admission_time=datetime.now()
+        )
+        
+        # Add to patients
+        self.patients[patient.id] = patient
+        self.total_arrivals += 1
+        
+        # Assess with Risk Monitor
+        assessment = self.risk_monitor.assess_patient(patient)
+        self.total_assessments += 1
+        
+        # Generate decision
+        if assessment.risk_score >= 50:
+            self._generate_decision_for_patient(patient, assessment)
+        
+        # Broadcast ambulance arrival
+        event_data = {
+            "type": "ambulance_arrival",
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "patient_id": patient.id,
+                "patient_name": patient.name,
+                "age": patient.age,
+                "acuity": patient.acuity_level,
+                "complaint": patient.chief_complaint,
+                "risk_score": assessment.risk_score,
+                "risk_level": assessment.risk_level.value
+            }
+        }
+        self._broadcast_event(event_data)
+        
+        logger.info(f"🚑 Ambulance patient injected: {patient.id}, risk={assessment.risk_score:.1f}")
+
 
 
 # Global orchestrator instance (singleton)

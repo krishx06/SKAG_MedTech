@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -20,10 +21,26 @@ import {
 } from '@/hooks/useSimulation';
 
 const scenarios = [
-  { value: 'normal', label: 'Normal Operations' },
-  { value: 'busy_thursday', label: 'Busy Thursday' },
-  { value: 'high_ed', label: 'High ED Volume' },
-  { value: 'staff_shortage', label: 'Staff Shortage' },
+  { 
+    value: 'normal', 
+    label: 'Normal Operations',
+    description: 'Baseline hospital operations with typical patient flow (5-8 patients/hour). ICU at 67% capacity, adequate staffing. First decisions in ~15-20 seconds.'
+  },
+  { 
+    value: 'busy_thursday', 
+    label: 'Busy Thursday',
+    description: 'High-volume evening shift with 12-15 patients/hour. Multiple high-acuity cases, 2-3 patients requiring escalation. First decisions in ~10-15 seconds. Best for demos!'
+  },
+  { 
+    value: 'high_ed', 
+    label: 'High ED Volume',
+    description: 'Emergency department surge with 15-20 patients/hour. Extended wait times, capacity strain. Tests agent prioritization under pressure. Rapid decisions within 5-10 seconds.'
+  },
+  { 
+    value: 'staff_shortage', 
+    label: 'Staff Shortage',
+    description: 'Reduced nursing staff (50% capacity). Normal patient volume but limited resources. Demonstrates resource-constrained decision making. Decisions in ~15-20 seconds.'
+  },
 ];
 
 const speedOptions = [
@@ -36,6 +53,11 @@ const speedOptions = [
 export default function SimulationControl() {
   const [selectedScenario, setSelectedScenario] = useState('normal');
   const [speed, setSpeed] = useState(1);
+  const [promptText, setPromptText] = useState('');
+  const [eventPrompt, setEventPrompt] = useState('');
+  const [generatedScenario, setGeneratedScenario] = useState<any>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isInjecting, setIsInjecting] = useState(false);
 
   const { data: status, isLoading } = useSimulationStatus();
   const startMutation = useStartSimulation();
@@ -58,6 +80,45 @@ export default function SimulationControl() {
 
   const handleReset = () => {
     resetMutation.mutate();
+  };
+
+  const handleGenerateScenario = async () => {
+    if (!promptText.trim()) return;
+    
+    setIsGenerating(true);
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/simulation/generate-scenario?prompt=${encodeURIComponent(promptText)}`
+      , {
+        method: 'POST'
+      });
+      const data = await response.json();
+      setGeneratedScenario(data.scenario);
+    } catch (error) {
+      console.error('Failed to generate scenario:', error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleInjectEvent = async () => {
+    if (!eventPrompt.trim()) return;
+    
+    setIsInjecting(true);
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/simulation/inject-event?prompt=${encodeURIComponent(eventPrompt)}`,
+        { method: 'POST' }
+      );
+      const data = await response.json();
+      alert(`Event injected: ${data.message}`);
+      setEventPrompt('');
+    } catch (error) {
+      console.error('Failed to inject event:', error);
+      alert('Failed to inject event. Make sure simulation is running.');
+    } finally {
+      setIsInjecting(false);
+    }
   };
 
   const formatSimulationTime = (timeStr?: string) => {
@@ -156,11 +217,21 @@ export default function SimulationControl() {
                 <SelectContent>
                   {scenarios.map((scenario) => (
                     <SelectItem key={scenario.value} value={scenario.value}>
-                      {scenario.label}
+                      <div>
+                        <div className="font-medium">{scenario.label}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{scenario.description}</div>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              
+              {/* Scenario Description */}
+              <div className="rounded-lg bg-secondary/50 p-3 border border-border">
+                <p className="text-sm text-muted-foreground">
+                  {scenarios.find(s => s.value === selectedScenario)?.description}
+                </p>
+              </div>
             </div>
 
             {/* Speed Control */}
@@ -248,6 +319,79 @@ export default function SimulationControl() {
         </Card>
       </div>
 
+      {/* Prompt-Based Scenario Generation */}
+      <Card className="mt-6 border-border bg-card">
+        <CardHeader>
+          <CardTitle className="text-lg">🤖 AI Scenario Generator</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Describe your scenario in natural language</label>
+            <Textarea
+              placeholder="Example: 10 ICU beds, 9 filled, ambulance with 2 critical patients arriving..."
+              value={promptText}
+              onChange={(e) => setPromptText(e.target.value)}
+              className="min-h-[80px] bg-secondary"
+              disabled={isRunning}
+            />
+          </div>
+          <Button 
+            onClick={handleGenerateScenario} 
+            disabled={isGenerating || !promptText.trim() || isRunning}
+            className="w-full"
+          >
+            {isGenerating ? 'Generating...' : 'Generate Scenario'}
+          </Button>
+          
+          {generatedScenario && (
+            <div className="rounded-lg border border-border bg-secondary/50 p-4">
+              <p className="text-sm font-medium mb-2">Generated Scenario:</p>
+              <div className="space-y-1 text-sm">
+                <p>• ICU: {generatedScenario.icu_beds}</p>
+                <p>• ED: {generatedScenario.ed_beds}</p>
+                <p>• Initial Patients: {generatedScenario.initial_patients}</p>
+                {generatedScenario.incoming_ambulances > 0 && (
+                  <p>• Incoming Ambulances: {generatedScenario.incoming_ambulances}</p>
+                )}
+                {generatedScenario.staff_shortage && (
+                  <p className="text-yellow-500">⚠️ Staff Shortage</p>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dynamic Event Injection */}
+      {isRunning && (
+        <Card className="mt-6 border-border bg-card border-primary/50">
+          <CardHeader>
+            <CardTitle className="text-lg">⚡ Inject Live Event</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Add event to running simulation</label>
+              <Textarea
+                placeholder="Example: ambulance with critical patient arrives now..."
+                value={eventPrompt}
+                onChange={(e) => setEventPrompt(e.target.value)}
+                className="min-h-[60px] bg-secondary"
+              />
+            </div>
+            <Button 
+              onClick={handleInjectEvent}
+              disabled={isInjecting || !eventPrompt.trim()}
+              className="w-full bg-status-online hover:bg-status-online/90"
+            >
+              {isInjecting ? 'Injecting...' : '🚑 Inject Event Now'}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Try: "ambulance with 2 critical patients" or "staff shortage in ICU"
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Quick Info */}
       <Card className="mt-6 border-border bg-card">
         <CardContent className="p-4">
@@ -258,6 +402,10 @@ export default function SimulationControl() {
                 The simulation generates realistic patient arrivals, vital sign changes, and
                 triggers AI agents to make decisions. Start the simulation to see the hospital
                 system respond in real-time.
+              </p>
+              <p className="mt-2 font-medium text-foreground">AI-Powered Scenarios</p>
+              <p className="mt-1">
+                Use natural language to describe any hospital scenario. Our AI will parse it and configure the simulation automatically.
               </p>
             </div>
             <div className="flex-1">

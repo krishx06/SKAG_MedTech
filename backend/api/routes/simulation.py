@@ -7,6 +7,7 @@ integrated Risk Monitor Agent.
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
+from datetime import datetime
 
 from backend.simulation.simulation_orchestrator import get_orchestrator
 
@@ -107,4 +108,101 @@ async def get_unit_capacity(unit: str):
     """Get capacity for a specific unit."""
     # This will be enhanced when Capacity Intelligence integration is complete
     raise HTTPException(status_code=501, detail="Capacity endpoint not yet integrated")
+
+
+@router.post("/generate-scenario")
+async def generate_scenario_from_prompt(prompt: str):
+    """
+    Generate a simulation scenario from natural language prompt.
+    
+    Example prompts:
+    - "10 ICU beds, 9 filled, ambulance with 2 critical patients"
+    - "Staff shortage with 3 nurses, 15 ED patients waiting"
+    - "Normal operations, then ambulance arrives with trauma patient"
+    
+    Returns the parsed scenario configuration.
+    """
+    try:
+        from backend.simulation.prompt_scenario_generator import get_scenario_generator
+        
+        generator = get_scenario_generator()
+        scenario_config = generator.parse_prompt(prompt)
+        
+        return {
+            "status": "success",
+            "prompt": prompt,
+            "scenario": {
+                "icu_beds": f"{scenario_config.icu_occupied_beds}/{scenario_config.icu_total_beds}",
+                "ed_beds": f"{scenario_config.ed_occupied_beds}/{scenario_config.ed_total_beds}",
+                "ward_beds": f"{scenario_config.ward_occupied_beds}/{scenario_config.ward_total_beds}",
+                "initial_patients": scenario_config.initial_patients,
+                "incoming_ambulances": scenario_config.incoming_ambulances,
+                "ambulance_patients": scenario_config.ambulance_patients,
+                "staff_shortage": scenario_config.staff_shortage,
+                "staff": {
+                    "icu_nurses": scenario_config.icu_nurses,
+                    "ed_nurses": scenario_config.ed_nurses
+                }
+            },
+            "config": scenario_config.__dict__
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate scenario: {str(e)}")
+
+
+@router.post("/inject-event")
+async def inject_event(prompt: str):
+    """
+    Inject a dynamic event into running simulation via natural language.
+    
+    Example prompts:
+    - "ambulance with critical patient arrives now"
+    - "staff shortage in ICU"
+    - "2 ICU beds become available"
+    - "patient deteriorates rapidly"
+    
+    The simulation must be running for this to work.
+    """
+    orchestrator = get_orchestrator()
+    
+    if not orchestrator.is_running:
+        raise HTTPException(status_code=400, detail="Simulation is not running. Start simulation first.")
+    
+    try:
+        from backend.simulation.prompt_scenario_generator import get_scenario_generator
+        
+        generator = get_scenario_generator()
+        event = generator.generate_event_from_prompt(prompt)
+        
+        # Apply event to running simulation
+        if event["type"] == "ambulance_arrival":
+            # Add new patients to simulation
+            for patient_data in event["patients"]:
+                orchestrator._inject_ambulance_patient(patient_data)
+        
+        elif event["type"] == "staff_change":
+            # Update staff levels (broadcast via WebSocket)
+            orchestrator._broadcast_event({
+                "type": "staff_change",
+                "timestamp": datetime.now().isoformat(),
+                "data": event
+            })
+        
+        elif event["type"] == "capacity_change":
+            # Update bed capacity
+            orchestrator._broadcast_event({
+                "type": "capacity_change",
+                "timestamp": datetime.now().isoformat(),
+                "data": event
+            })
+        
+        return {
+            "status": "injected",
+            "prompt": prompt,
+            "event": event,
+            "message": f"Event injected into running simulation"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to inject event: {str(e)}")
 

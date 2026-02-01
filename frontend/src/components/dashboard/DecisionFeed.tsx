@@ -29,7 +29,7 @@ function DecisionItem({ decision }: DecisionItemProps) {
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>{decision.agent_name}</span>
             <span>•</span>
-            <span>Confidence: {Math.round(decision.confidence * 100)}%</span>
+            <span>Confidence: {decision.confidence.toFixed(1)}%</span>
           </div>
         </div>
         <span className="shrink-0 text-xs text-muted-foreground">

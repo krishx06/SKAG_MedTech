@@ -196,6 +196,16 @@ async def websocket_endpoint(websocket: WebSocket):
         await manager.disconnect(websocket)
 
 
+@router.websocket("/ws/events")
+async def websocket_events_endpoint(websocket: WebSocket):
+    """
+    Alternative WebSocket endpoint for /ws/events (for compatibility).
+    Routes to the same handler as /ws.
+    """
+    await websocket_endpoint(websocket)
+
+
+
 async def _send_initial_state(websocket: WebSocket) -> None:
     """Send initial state to newly connected client."""
     state_manager = get_state_manager()
