@@ -57,7 +57,7 @@ class LLMReasoning:
     async def generate_explanation(
         self,
         patient: Patient,
-        action_type: ActionType,
+        action_type: DecisionType,
         mcda_scores: Optional[MCDAScores],
         risk_assessment: Optional[RiskAssessment],
         context: Dict[str, Any]
@@ -107,7 +107,7 @@ class LLMReasoning:
     def _build_prompt(
         self,
         patient: Patient,
-        action_type: ActionType,
+        action_type: DecisionType,
         mcda_scores: Optional[MCDAScores],
         risk_assessment: Optional[RiskAssessment],
         context: Dict[str, Any]
@@ -183,7 +183,7 @@ Keep it professional, clear, and under 100 words."""
     def _generate_fallback_explanation(
         self,
         patient: Patient,
-        action_type: ActionType,
+        action_type: DecisionType,
         mcda_scores: Optional[MCDAScores],
         risk_assessment: Optional[RiskAssessment],
         context: Dict[str, Any]
@@ -225,26 +225,26 @@ Keep it professional, clear, and under 100 words."""
                 reasons.append("limited bed availability")
         
         # Build decision-specific explanation
-        if action_type == ActionType.ESCALATE:
+        if action_type == DecisionType.ESCALATE:
             action = "escalate to higher level of care"
             if not reasons:
                 reasons.append("clinical indicators warrant escalation")
             target = context.get('target_unit', 'ICU')
             next_step = f"Immediate transfer to {target} recommended."
             
-        elif action_type == ActionType.OBSERVE:
+        elif action_type == DecisionType.OBSERVE:
             action = "continue monitoring"
             if not reasons:
                 reasons.append("condition requires ongoing observation")
             next_step = "Reassess in 15-30 minutes."
             
-        elif action_type == ActionType.DELAY:
+        elif action_type == DecisionType.DELAY:
             action = "delay placement"
             if not reasons:
                 reasons.append("awaiting resource availability")
             next_step = "Reassess when resources become available."
             
-        elif action_type == ActionType.REPRIORITIZE:
+        elif action_type == DecisionType.REPRIORITIZE:
             action = "adjust priority level"
             if not reasons:
                 reasons.append("clinical status changed")
