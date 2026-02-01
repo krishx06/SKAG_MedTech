@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '../lib/utils';
 import { Bot, Activity, Eye, ArrowRightLeft, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { useAgentsStatus } from '@/hooks/useAgents';
-import { formatDateTime } from '@/lib/display-utils';
+import { formatDateTime } from '../lib/display-utils';
 
 interface AgentInfo {
   name: string;
