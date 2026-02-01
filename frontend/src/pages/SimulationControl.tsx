@@ -21,10 +21,9 @@ import {
 
 const scenarios = [
   { value: 'normal', label: 'Normal Operations' },
+  { value: 'busy_thursday', label: 'Busy Thursday' },
   { value: 'high_ed', label: 'High ED Volume' },
   { value: 'staff_shortage', label: 'Staff Shortage' },
-  { value: 'mass_casualty', label: 'Mass Casualty Event' },
-  { value: 'flu_season', label: 'Flu Season Surge' },
 ];
 
 const speedOptions = [
@@ -43,7 +42,11 @@ export default function SimulationControl() {
   const stopMutation = useStopSimulation();
   const resetMutation = useResetSimulation();
 
-  const isRunning = status?.is_running ?? false;
+  // Backend returns 'running' not 'is_running'
+  const isRunning = status?.running ?? false;
+  const totalArrivals = status?.total_arrivals ?? 0;
+  const activePatients = status?.active_patients ?? 0;
+  const uptime = status?.uptime_seconds ?? 0;
 
   const handleStart = () => {
     startMutation.mutate({ scenario: selectedScenario, speed });
@@ -198,14 +201,16 @@ export default function SimulationControl() {
               </div>
             ) : (
               <>
-                {/* Current Time */}
+                {/* Current Time - show uptime */}
                 <div className="rounded-lg bg-secondary/50 p-4">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Clock className="h-4 w-4" />
-                    Current Simulation Time
+                    Simulation Uptime
                   </div>
                   <p className="mt-1 text-3xl font-bold font-mono">
-                    {formatSimulationTime(status?.current_time)}
+                    {uptime > 0
+                      ? `${Math.floor(uptime / 60)}:${String(Math.floor(uptime % 60)).padStart(2, '0')}`
+                      : '--:--'}
                   </p>
                 </div>
 
@@ -213,17 +218,17 @@ export default function SimulationControl() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="rounded-lg bg-secondary/50 p-4">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Zap className="h-4 w-4" />
-                      Speed
+                      <Activity className="h-4 w-4" />
+                      Total Arrivals
                     </div>
-                    <p className="mt-1 text-2xl font-bold">{status?.speed ?? 1}x</p>
+                    <p className="mt-1 text-2xl font-bold">{totalArrivals}</p>
                   </div>
                   <div className="rounded-lg bg-secondary/50 p-4">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Activity className="h-4 w-4" />
-                      Events
+                      <Zap className="h-4 w-4" />
+                      Active Patients
                     </div>
-                    <p className="mt-1 text-2xl font-bold">{status?.event_count ?? 0}</p>
+                    <p className="mt-1 text-2xl font-bold">{activePatients}</p>
                   </div>
                 </div>
 

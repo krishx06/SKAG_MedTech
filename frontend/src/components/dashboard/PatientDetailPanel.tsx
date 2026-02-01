@@ -1,171 +1,45 @@
-import { X, TrendingUp, TrendingDown, Minus, Clock, AlertTriangle } from 'lucide-react';
+import { X, Clock, AlertTriangle, Heart, Activity, Thermometer } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@/components/ui/chart';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
-import type { Patient, RiskAssessment, VitalSigns, Decision, MCDAScores, Trajectory } from '@/types/hospital';
-import {
-  getRiskBgColor,
-  getTrajectoryInfo,
-  getLocationColor,
-  getActionInfo,
-  formatDateTime,
-  formatTimestamp,
-} from '@/lib/display-utils';
-import { usePatientVitals, usePatientRisk } from '@/hooks/usePatients';
-import { useDecisions } from '@/hooks/useDecisions';
+import type { Patient } from '@/types/hospital';
+import { getRiskBgColor, formatWaitTime } from '@/lib/display-utils';
 
 interface PatientDetailPanelProps {
   patient: Patient | null;
   onClose: () => void;
 }
 
-function TrajectoryIcon({ trajectory }: { trajectory: Trajectory }) {
-  const info = getTrajectoryInfo(trajectory);
-  switch (info.icon) {
-    case 'up':
-      return <TrendingUp className={cn('h-5 w-5', info.color)} />;
-    case 'down':
-      return <TrendingDown className={cn('h-5 w-5', info.color)} />;
-    default:
-      return <Minus className={cn('h-5 w-5', info.color)} />;
+function getAcuityLabel(level: number): string {
+  switch (level) {
+    case 1: return 'Resuscitation';
+    case 2: return 'Emergent';
+    case 3: return 'Urgent';
+    case 4: return 'Less Urgent';
+    case 5: return 'Non-Urgent';
+    default: return `Acuity ${level}`;
   }
 }
 
-const vitalsChartConfig: ChartConfig = {
-  heart_rate: {
-    label: 'Heart Rate',
-    color: 'hsl(var(--chart-1))',
-  },
-  oxygen_saturation: {
-    label: 'O2 Sat',
-    color: 'hsl(var(--chart-2))',
-  },
-  blood_pressure_systolic: {
-    label: 'BP Systolic',
-    color: 'hsl(var(--chart-3))',
-  },
-};
-
-function VitalsChart({ vitals }: { vitals: VitalSigns[] }) {
-  const chartData = vitals.slice(-20).map((v, i) => ({
-    time: formatTimestamp(v.timestamp),
-    heart_rate: v.heart_rate,
-    oxygen_saturation: v.oxygen_saturation,
-    blood_pressure_systolic: v.blood_pressure_systolic,
-  }));
-
-  if (chartData.length === 0) {
-    return (
-      <div className="flex h-48 items-center justify-center text-muted-foreground">
-        No vitals data available
-      </div>
-    );
+function getAcuityColor(level: number): string {
+  switch (level) {
+    case 1: return 'bg-red-600';
+    case 2: return 'bg-orange-500';
+    case 3: return 'bg-yellow-500';
+    case 4: return 'bg-green-500';
+    case 5: return 'bg-blue-500';
+    default: return 'bg-gray-500';
   }
-
-  return (
-    <ChartContainer config={vitalsChartConfig} className="h-48 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis
-            dataKey="time"
-            tick={{ fontSize: 10 }}
-            tickLine={false}
-            className="text-muted-foreground"
-          />
-          <YAxis tick={{ fontSize: 10 }} tickLine={false} className="text-muted-foreground" />
-          <ChartTooltip content={<ChartTooltipContent />} />
-          <Line
-            type="monotone"
-            dataKey="heart_rate"
-            stroke="var(--color-heart_rate)"
-            strokeWidth={2}
-            dot={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="oxygen_saturation"
-            stroke="var(--color-oxygen_saturation)"
-            strokeWidth={2}
-            dot={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="blood_pressure_systolic"
-            stroke="var(--color-blood_pressure_systolic)"
-            strokeWidth={2}
-            dot={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </ChartContainer>
-  );
-}
-
-function MCDABreakdown({ scores }: { scores?: MCDAScores }) {
-  if (!scores) {
-    return (
-      <div className="text-sm text-muted-foreground">
-        MCDA scores not available
-      </div>
-    );
-  }
-
-  const items = [
-    { label: 'Safety', value: scores.safety_score },
-    { label: 'Urgency', value: scores.urgency_score },
-    { label: 'Capacity', value: scores.capacity_score },
-    { label: 'Impact', value: scores.impact_score },
-  ];
-
-  return (
-    <div className="space-y-3">
-      {items.map((item) => (
-        <div key={item.label} className="space-y-1">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">{item.label}</span>
-            <span className="font-medium">{Math.round(item.value * 100)}%</span>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
-            <div
-              className="h-full bg-primary transition-all"
-              style={{ width: `${item.value * 100}%` }}
-            />
-          </div>
-        </div>
-      ))}
-      <Separator />
-      <div className="flex justify-between">
-        <span className="font-medium">Weighted Total</span>
-        <span className="text-lg font-bold text-primary">
-          {Math.round(scores.weighted_total * 100)}%
-        </span>
-      </div>
-    </div>
-  );
 }
 
 export function PatientDetailPanel({ patient, onClose }: PatientDetailPanelProps) {
-  const { data: vitals } = usePatientVitals(patient?.patient_id ?? null);
-  const { data: riskAssessment } = usePatientRisk(patient?.patient_id ?? null);
-  const { data: allDecisions } = useDecisions();
-
   if (!patient) return null;
 
-  const patientDecisions = allDecisions?.filter((d) => d.patient_id === patient.patient_id) ?? [];
-  const riskScore = riskAssessment?.risk_score ?? 0;
-  const trajectory = riskAssessment?.trajectory ?? 'stable';
-  const trajectoryInfo = getTrajectoryInfo(trajectory);
+  const riskScore = patient.risk_score ?? 0;
+  const isCritical = patient.is_critical || riskScore >= 80;
 
   return (
     <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg animate-slide-in-right border-l border-border bg-background shadow-xl">
@@ -175,19 +49,17 @@ export function PatientDetailPanel({ patient, onClose }: PatientDetailPanelProps
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold">{patient.name}</h2>
-              <Badge
-                className={cn(getLocationColor(patient.current_location), 'text-white border-0')}
-              >
-                {patient.current_location}
-              </Badge>
+              {isCritical && (
+                <Badge variant="destructive" className="animate-pulse">
+                  <AlertTriangle className="mr-1 h-3 w-3" />
+                  Critical
+                </Badge>
+              )}
             </div>
             <p className="text-sm text-muted-foreground">
-              {patient.age}y, {patient.gender} • {patient.chief_complaint}
+              {patient.age}y • {patient.current_location}
             </p>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Clock className="h-3 w-3" />
-              Arrived: {formatDateTime(patient.arrival_time)}
-            </div>
+            <p className="text-sm font-medium">{patient.chief_complaint}</p>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-5 w-5" />
@@ -197,36 +69,33 @@ export function PatientDetailPanel({ patient, onClose }: PatientDetailPanelProps
         {/* Content */}
         <ScrollArea className="flex-1 p-4">
           <div className="space-y-6">
-            {/* Medical History */}
-            {patient.medical_history.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {patient.medical_history.map((history) => (
-                  <Badge key={history} variant="secondary" className="text-xs">
-                    {history}
-                  </Badge>
-                ))}
-              </div>
-            )}
-
-            {/* Vitals Chart */}
+            {/* Patient Info Card */}
             <Card className="border-border bg-card">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Vitals Trend</CardTitle>
+                <CardTitle className="text-base">Patient Information</CardTitle>
               </CardHeader>
               <CardContent>
-                <VitalsChart vitals={vitals ?? patient.vitals} />
-                <div className="mt-2 flex gap-4 text-xs">
-                  <div className="flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full bg-chart-1" />
-                    <span>HR</span>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Patient ID</span>
+                    <p className="font-medium">{patient.id}</p>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full bg-chart-2" />
-                    <span>O2</span>
+                  <div>
+                    <span className="text-muted-foreground">Status</span>
+                    <p className="font-medium capitalize">{patient.status}</p>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full bg-chart-3" />
-                    <span>BP</span>
+                  <div>
+                    <span className="text-muted-foreground">Acuity Level</span>
+                    <Badge className={cn(getAcuityColor(patient.acuity_level), 'text-white border-0 mt-1')}>
+                      {getAcuityLabel(patient.acuity_level)}
+                    </Badge>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Wait Time</span>
+                    <div className="flex items-center gap-1 mt-1">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{formatWaitTime(patient.wait_time_minutes)}</span>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -248,85 +117,67 @@ export function PatientDetailPanel({ patient, onClose }: PatientDetailPanelProps
                     {riskScore}
                   </div>
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <TrajectoryIcon trajectory={trajectory} />
-                      <span className={cn('font-medium', trajectoryInfo.color)}>
-                        {trajectoryInfo.label}
-                      </span>
-                    </div>
-                    {riskAssessment?.confidence && (
-                      <p className="text-sm text-muted-foreground">
-                        Confidence: {Math.round(riskAssessment.confidence * 100)}%
-                      </p>
-                    )}
+                    <p className="font-medium">
+                      {riskScore >= 80 ? 'High Risk' : riskScore >= 50 ? 'Moderate Risk' : 'Low Risk'}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {riskScore >= 80
+                        ? 'Requires immediate attention'
+                        : riskScore >= 50
+                          ? 'Monitor closely'
+                          : 'Standard monitoring'}
+                    </p>
                   </div>
                 </div>
-                {riskAssessment?.contributing_factors && (
-                  <div className="mt-4 space-y-2">
-                    <p className="text-sm font-medium">Contributing Factors</p>
-                    <div className="flex flex-wrap gap-2">
-                      {riskAssessment.contributing_factors.map((factor) => (
-                        <Badge key={factor} variant="outline" className="text-xs">
-                          <AlertTriangle className="mr-1 h-3 w-3" />
-                          {factor}
-                        </Badge>
-                      ))}
+              </CardContent>
+            </Card>
+
+            {/* Current Status */}
+            <Card className="border-border bg-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Current Status</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="flex flex-col items-center p-3 rounded-lg bg-secondary/50">
+                    <Heart className="h-6 w-6 text-red-500 mb-2" />
+                    <span className="text-xs text-muted-foreground">Location</span>
+                    <span className="font-medium text-sm">{patient.current_location}</span>
+                  </div>
+                  <div className="flex flex-col items-center p-3 rounded-lg bg-secondary/50">
+                    <Activity className="h-6 w-6 text-blue-500 mb-2" />
+                    <span className="text-xs text-muted-foreground">Risk</span>
+                    <span className="font-medium text-sm">{riskScore}%</span>
+                  </div>
+                  <div className="flex flex-col items-center p-3 rounded-lg bg-secondary/50">
+                    <Thermometer className="h-6 w-6 text-orange-500 mb-2" />
+                    <span className="text-xs text-muted-foreground">Acuity</span>
+                    <span className="font-medium text-sm">{patient.acuity_level}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Chief Complaint Details */}
+            <Card className="border-border bg-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Chief Complaint</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm">{patient.chief_complaint}</p>
+                <Separator className="my-4" />
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    This patient has been waiting for <strong>{formatWaitTime(patient.wait_time_minutes)}</strong> and
+                    has a risk score of <strong>{riskScore}</strong>.
+                  </p>
+                  {isCritical && (
+                    <div className="flex items-center gap-2 p-2 rounded bg-red-500/10 text-red-500">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span className="text-sm font-medium">This patient requires immediate attention</span>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* MCDA Breakdown - placeholder for future data */}
-            <Card className="border-border bg-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">MCDA Score Breakdown</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <MCDABreakdown />
-              </CardContent>
-            </Card>
-
-            {/* Recent Decisions */}
-            <Card className="border-border bg-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Recent Decisions</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {patientDecisions.length > 0 ? (
-                  <div className="space-y-3">
-                    {patientDecisions.slice(0, 5).map((decision) => {
-                      const actionInfo = getActionInfo(decision.action);
-                      return (
-                        <div
-                          key={decision.decision_id}
-                          className="rounded-lg border border-border bg-secondary/30 p-3"
-                        >
-                          <div className="flex items-center justify-between">
-                            <Badge
-                              className={cn(
-                                'text-xs font-bold border-0',
-                                actionInfo.bgColor,
-                                actionInfo.color
-                              )}
-                            >
-                              {actionInfo.label}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">
-                              {formatTimestamp(decision.timestamp)}
-                            </span>
-                          </div>
-                          <p className="mt-2 text-sm text-muted-foreground">{decision.reasoning}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {decision.agent_name} • {Math.round(decision.confidence * 100)}% confidence
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No decisions for this patient yet</p>
-                )}
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>

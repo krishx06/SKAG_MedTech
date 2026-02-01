@@ -66,6 +66,28 @@ async def stop_simulation():
     return result
 
 
+@router.post("/reset")
+async def reset_simulation():
+    """Reset simulation to initial state, clearing all data."""
+    orchestrator = get_orchestrator()
+    
+    # Stop if running
+    if orchestrator.is_running:
+        orchestrator.stop_simulation()
+    
+    # Reset state
+    orchestrator.patients.clear()
+    orchestrator.total_arrivals = 0
+    orchestrator.total_assessments = 0
+    orchestrator.start_time = None
+    orchestrator.simulation = None
+    
+    return {
+        "status": "reset",
+        "message": "Simulation reset to initial state"
+    }
+
+
 @router.get("/hospital")
 async def get_hospital_state():
     """Get current hospital state with all patients."""

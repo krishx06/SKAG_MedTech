@@ -1,9 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { Activity, Bed, TrendingUp, Users, AlertTriangle } from 'lucide-react';
-import { useCapacity, useHospitalState } from '@/hooks/useCapacity';
+import { useCapacity } from '@/hooks/useCapacity';
 import {
   ChartContainer,
   ChartTooltip,
@@ -11,56 +10,47 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
-import type { UnitCapacity, LocationType } from '@/types/hospital';
-import { getLocationColor } from '@/lib/display-utils';
+import type { UnitCapacity, CapacityResponse } from '@/types/hospital';
 
-function getCapacityColorClass(occupancyRate: number): string {
-  if (occupancyRate < 0.5) return 'bg-capacity-available';
-  if (occupancyRate < 0.7) return 'bg-capacity-moderate';
+function getCapacityColorClass(occupancyPercent: number): string {
+  if (occupancyPercent < 50) return 'bg-capacity-available';
+  if (occupancyPercent < 70) return 'bg-capacity-moderate';
   return 'bg-capacity-critical';
 }
 
 function CapacityHeatmap({ capacities }: { capacities: UnitCapacity[] }) {
-  const units: LocationType[] = ['ED', 'ICU', 'Ward', 'ED_Obs', 'OR'];
-
   return (
-    <div className="grid grid-cols-5 gap-4">
-      {units.map((unit) => {
-        const capacity = capacities.find((c) => c.unit === unit);
-        const occupancy = capacity?.occupancy_rate ?? 0;
-        const occupancyPercent = Math.round(occupancy * 100);
+    <div className="grid grid-cols-3 gap-4">
+      {capacities.map((capacity) => {
+        const occupancyPercent = capacity.occupancy_rate;
+        const isCritical = occupancyPercent >= 90;
 
         return (
           <Card
-            key={unit}
+            key={capacity.id}
             className={cn(
               'relative overflow-hidden border-border transition-all hover:scale-105',
-              occupancy >= 0.9 && 'animate-glow-critical'
+              isCritical && 'ring-2 ring-red-500'
             )}
           >
             <div
               className={cn(
                 'absolute inset-0 opacity-20',
-                getCapacityColorClass(occupancy)
+                getCapacityColorClass(occupancyPercent)
               )}
             />
             <CardContent className="relative p-4 text-center">
               <Badge
-                className={cn(
-                  'mb-2 text-xs',
-                  getLocationColor(unit),
-                  'text-white border-0'
-                )}
+                variant="outline"
+                className="mb-2 text-xs font-semibold"
               >
-                {unit}
+                {capacity.name}
               </Badge>
-              <p className="text-3xl font-bold">{occupancyPercent}%</p>
+              <p className="text-3xl font-bold">{Math.round(occupancyPercent)}%</p>
               <p className="text-xs text-muted-foreground">Occupancy</p>
-              {capacity && (
-                <p className="mt-2 text-sm">
-                  {capacity.available_beds}/{capacity.total_beds} beds
-                </p>
-              )}
+              <p className="mt-2 text-sm">
+                {capacity.available_beds}/{capacity.total_beds} beds available
+              </p>
             </CardContent>
           </Card>
         );
@@ -70,9 +60,9 @@ function CapacityHeatmap({ capacities }: { capacities: UnitCapacity[] }) {
 }
 
 const timelineChartConfig: ChartConfig = {
-  ED: { label: 'ED', color: 'hsl(var(--location-ed))' },
-  ICU: { label: 'ICU', color: 'hsl(var(--location-icu))' },
-  Ward: { label: 'Ward', color: 'hsl(var(--location-ward))' },
+  ED: { label: 'ED', color: 'hsl(var(--chart-1))' },
+  ICU: { label: 'ICU', color: 'hsl(var(--chart-2))' },
+  Ward: { label: 'Ward', color: 'hsl(var(--chart-3))' },
 };
 
 function PredictedAvailabilityChart() {
@@ -146,20 +136,19 @@ function UnitBreakdownTable({ capacities }: { capacities: UnitCapacity[] }) {
         </thead>
         <tbody>
           {capacities.map((cap) => {
-            const workloadPercent = Math.min(100, cap.patients_per_nurse * 20);
+            const occupiedBeds = cap.total_beds - cap.available_beds;
+            const workloadPercent = Math.min(100, (cap.average_staff_load ?? 0) * 20);
             return (
-              <tr key={cap.unit} className="border-t border-border hover:bg-secondary/30">
+              <tr key={cap.id} className="border-t border-border hover:bg-secondary/30">
                 <td className="px-4 py-3">
-                  <Badge
-                    className={cn(getLocationColor(cap.unit), 'text-white border-0')}
-                  >
-                    {cap.unit}
+                  <Badge variant="outline" className="font-medium">
+                    {cap.name}
                   </Badge>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Bed className="h-4 w-4 text-muted-foreground" />
-                    <span>{cap.occupied_beds}/{cap.total_beds}</span>
+                    <span>{occupiedBeds}/{cap.total_beds}</span>
                   </div>
                 </td>
                 <td className="px-4 py-3">
@@ -167,16 +156,16 @@ function UnitBreakdownTable({ capacities }: { capacities: UnitCapacity[] }) {
                     <div className="h-2 w-24 overflow-hidden rounded-full bg-secondary">
                       <div
                         className={cn('h-full', getCapacityColorClass(cap.occupancy_rate))}
-                        style={{ width: `${cap.occupancy_rate * 100}%` }}
+                        style={{ width: `${cap.occupancy_rate}%` }}
                       />
                     </div>
-                    <span className="text-sm">{Math.round(cap.occupancy_rate * 100)}%</span>
+                    <span className="text-sm">{Math.round(cap.occupancy_rate)}%</span>
                   </div>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-muted-foreground" />
-                    <span>{cap.staff_on_duty}</span>
+                    <span>{cap.available_staff ?? 0}</span>
                   </div>
                 </td>
                 <td className="px-4 py-3">
@@ -188,13 +177,13 @@ function UnitBreakdownTable({ capacities }: { capacities: UnitCapacity[] }) {
                           workloadPercent > 80
                             ? 'bg-capacity-critical'
                             : workloadPercent > 60
-                            ? 'bg-capacity-moderate'
-                            : 'bg-capacity-available'
+                              ? 'bg-capacity-moderate'
+                              : 'bg-capacity-available'
                         )}
                         style={{ width: `${workloadPercent}%` }}
                       />
                     </div>
-                    <span className="text-sm">{cap.patients_per_nurse.toFixed(1)}</span>
+                    <span className="text-sm">{(cap.average_staff_load ?? 0).toFixed(1)}</span>
                   </div>
                 </td>
               </tr>
@@ -207,9 +196,11 @@ function UnitBreakdownTable({ capacities }: { capacities: UnitCapacity[] }) {
 }
 
 export default function CapacityIntelligence() {
-  const { data: capacities, isLoading } = useCapacity();
+  const { data: capacityData, isLoading } = useCapacity();
 
-  const criticalUnits = capacities?.filter((c) => c.occupancy_rate >= 0.8) ?? [];
+  // Extract units from capacity response
+  const capacities = (capacityData as CapacityResponse)?.units ?? [];
+  const criticalUnits = capacities.filter((c) => c.occupancy_rate >= 80);
 
   return (
     <div className="h-full overflow-auto p-6 scrollbar-thin">
@@ -223,12 +214,12 @@ export default function CapacityIntelligence() {
 
       {/* Critical Alerts */}
       {criticalUnits.length > 0 && (
-        <Card className="mb-6 border-risk-high bg-risk-high/10">
+        <Card className="mb-6 border-red-500 bg-red-500/10">
           <CardContent className="flex items-center gap-3 p-4">
-            <AlertTriangle className="h-5 w-5 text-risk-high" />
-            <span className="font-medium text-risk-high">
+            <AlertTriangle className="h-5 w-5 text-red-500" />
+            <span className="font-medium text-red-500">
               {criticalUnits.length} unit(s) at critical capacity:{' '}
-              {criticalUnits.map((u) => u.unit).join(', ')}
+              {criticalUnits.map((u) => u.name).join(', ')}
             </span>
           </CardContent>
         </Card>
@@ -242,13 +233,17 @@ export default function CapacityIntelligence() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="grid grid-cols-5 gap-4">
-                {[1, 2, 3, 4, 5].map((i) => (
+              <div className="grid grid-cols-3 gap-4">
+                {[1, 2, 3].map((i) => (
                   <div key={i} className="h-32 animate-pulse rounded-lg bg-muted" />
                 ))}
               </div>
+            ) : capacities.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">
+                No capacity data available
+              </div>
             ) : (
-              <CapacityHeatmap capacities={capacities ?? []} />
+              <CapacityHeatmap capacities={capacities} />
             )}
           </CardContent>
         </Card>
@@ -265,15 +260,15 @@ export default function CapacityIntelligence() {
             <PredictedAvailabilityChart />
             <div className="mt-4 flex justify-center gap-6">
               <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-full bg-location-ed" />
+                <div className="h-3 w-3 rounded-full bg-[hsl(var(--chart-1))]" />
                 <span className="text-sm">ED</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-full bg-location-icu" />
+                <div className="h-3 w-3 rounded-full bg-[hsl(var(--chart-2))]" />
                 <span className="text-sm">ICU</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-full bg-location-ward" />
+                <div className="h-3 w-3 rounded-full bg-[hsl(var(--chart-3))]" />
                 <span className="text-sm">Ward</span>
               </div>
             </div>
@@ -288,8 +283,12 @@ export default function CapacityIntelligence() {
           <CardContent>
             {isLoading ? (
               <div className="h-48 animate-pulse rounded-lg bg-muted" />
+            ) : capacities.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">
+                No capacity data available
+              </div>
             ) : (
-              <UnitBreakdownTable capacities={capacities ?? []} />
+              <UnitBreakdownTable capacities={capacities} />
             )}
           </CardContent>
         </Card>

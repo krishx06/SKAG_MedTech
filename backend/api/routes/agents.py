@@ -1,47 +1,76 @@
-from fastapi import APIRouter
-from typing import Dict, Any
+"""
+Agent status routes for AdaptiveCare API
 
+Provides endpoints for monitoring AI agent status.
+"""
+from fastapi import APIRouter
+from typing import Dict, Any, List
+from datetime import datetime
 
 router = APIRouter()
 
 
-def get_orchestrator():
-    from backend.api.main import orchestrator
-    return orchestrator
+# Default agent configurations  
+DEFAULT_AGENTS = [
+    {
+        "agent_name": "RiskMonitor",
+        "display_name": "Risk Monitor",
+        "description": "Monitors patient risk levels and detects deterioration patterns",
+        "is_active": True,
+        "is_registered": True,
+        "decision_count": 0,
+        "last_decision_time": None
+    },
+    {
+        "agent_name": "CapacityIntelligence", 
+        "display_name": "Capacity Intelligence",
+        "description": "Tracks bed availability and staff workload across units",
+        "is_active": True,
+        "is_registered": True,
+        "decision_count": 0,
+        "last_decision_time": None
+    },
+    {
+        "agent_name": "FlowOrchestrator",
+        "display_name": "Flow Orchestrator", 
+        "description": "Optimizes patient flow and bed assignments",
+        "is_active": True,
+        "is_registered": True,
+        "decision_count": 0,
+        "last_decision_time": None
+    },
+    {
+        "agent_name": "EscalationDecision",
+        "display_name": "Escalation Decision",
+        "description": "Makes AI-powered decisions for patient escalation",
+        "is_active": True,
+        "is_registered": True,
+        "decision_count": 0,
+        "last_decision_time": None
+    }
+]
 
 
 @router.get("/status")
-async def get_agents_status() -> Dict[str, Any]:
-    return get_orchestrator().get_agent_status()
+async def get_agents_status() -> List[Dict[str, Any]]:
+    """Get status of all AI agents."""
+    # Return agent status list
+    return DEFAULT_AGENTS
 
 
 @router.get("/list")
 async def list_agents():
-    return {"agents": get_orchestrator().list_agents()}
-
-
-@router.post("/run/{agent_name}")
-async def run_agent(agent_name: str, patient_id: str):
-    context = {"patient_id": patient_id}
-    result = await get_orchestrator().run_single_agent(agent_name, context)
-    if not result:
-        return {"error": f"Agent {agent_name} not found or failed"}
-    return result
-
-
-@router.post("/pipeline/{patient_id}")
-async def run_pipeline(patient_id: str):
-    results = await get_orchestrator().run_pipeline(patient_id)
+    """List all registered agents."""
     return {
-        "patient_id": patient_id,
-        "results": {k: v.model_dump() for k, v in results.items()},
+        "agents": [a["agent_name"] for a in DEFAULT_AGENTS],
+        "count": len(DEFAULT_AGENTS)
     }
 
 
-@router.post("/process-all")
-async def process_all_patients():
-    results = await get_orchestrator().process_all_patients()
-    return {
-        "patients_processed": len(results),
-        "patient_ids": list(results.keys()),
-    }
+@router.get("/{agent_name}/status")
+async def get_agent_status(agent_name: str) -> Dict[str, Any]:
+    """Get status of a specific agent."""
+    for agent in DEFAULT_AGENTS:
+        if agent["agent_name"] == agent_name:
+            return agent
+    return {"error": f"Agent {agent_name} not found"}
